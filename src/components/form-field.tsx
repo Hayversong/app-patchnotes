@@ -17,13 +17,13 @@ function describedBy({ id, error, hint }: FieldProps, extra?: string) {
 }
 const FormField = React.forwardRef<HTMLInputElement, React.ComponentPropsWithoutRef<typeof Input> & FieldProps>(
   ({ label, error, hint, id, ...props }, ref) => <FieldFrame {...{ label, error, hint, id }}>
-    <Input {...props} ref={ref} id={id} aria-invalid={Boolean(error)} aria-describedby={describedBy({ label, error, hint, id }, props["aria-describedby"])} />
+    <Input {...props} ref={ref} id={id} aria-invalid={error ? true : undefined} aria-describedby={describedBy({ label, error, hint, id }, props["aria-describedby"])} />
   </FieldFrame>,
 );
 FormField.displayName = "FormField";
 const TextareaField = React.forwardRef<HTMLTextAreaElement, React.ComponentPropsWithoutRef<typeof Textarea> & FieldProps>(
   ({ label, error, hint, id, ...props }, ref) => <FieldFrame {...{ label, error, hint, id }}>
-    <Textarea {...props} ref={ref} id={id} aria-invalid={Boolean(error)} aria-describedby={describedBy({ label, error, hint, id }, props["aria-describedby"])} />
+    <Textarea {...props} ref={ref} id={id} aria-invalid={error ? true : undefined} aria-describedby={describedBy({ label, error, hint, id }, props["aria-describedby"])} />
   </FieldFrame>,
 );
 TextareaField.displayName = "TextareaField";

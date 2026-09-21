@@ -19,7 +19,7 @@ export function ProfileForm() {
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
   const [feedback, setFeedback] = useState<{ message: string; error?: boolean } | null>(null);
-  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<ProfileFormData>({
+  const { register, handleSubmit, reset, formState: { errors, touchedFields, isSubmitted, isDirty } } = useForm<ProfileFormData>({
     ...formOptions, resolver: zodResolver(profileSchema),
     defaultValues: { name: "", bio: "", avatarUrl: "", githubUrl: "" },
   });
@@ -47,11 +47,11 @@ export function ProfileForm() {
       <Card><CardHeader><CardTitle>Dados pessoais</CardTitle></CardHeader><CardContent>
         <form onSubmit={onSubmit} onChange={() => setFeedback(null)} aria-busy={updateProfile.isPending} noValidate>
           <fieldset disabled={updateProfile.isPending} className="min-w-0 space-y-5">
-            <FormField id="name" label="Nome" autoComplete="name" hint="Use pelo menos 2 caracteres." error={errors.name?.message} {...register("name")} />
+            <FormField id="name" label="Nome" autoComplete="name" hint="Use pelo menos 2 caracteres." error={touchedFields.name || isSubmitted ? errors.name?.message : undefined} {...register("name")} />
             <FormField id="email" label="E-mail" value={profile.data.email} readOnly hint="O e-mail não pode ser alterado nesta tela." />
-            <TextareaField id="bio" label="Sobre você (opcional)" rows={4} hint="Conte um pouco sobre seu trabalho. Máximo de 240 caracteres." error={errors.bio?.message} {...register("bio")} />
-            <FormField id="avatarUrl" label="Link da foto de perfil (opcional)" type="url" placeholder="https://exemplo.com/foto.png" hint="Informe o endereço completo da imagem, incluindo https://." error={errors.avatarUrl?.message} {...register("avatarUrl")} />
-            <FormField id="githubUrl" label="GitHub (opcional)" type="url" placeholder="https://github.com/seu-usuario" error={errors.githubUrl?.message} {...register("githubUrl")} />
+            <TextareaField id="bio" label="Sobre você (opcional)" rows={4} hint="Conte um pouco sobre seu trabalho. Máximo de 240 caracteres." error={touchedFields.bio || isSubmitted ? errors.bio?.message : undefined} {...register("bio")} />
+            <FormField id="avatarUrl" label="Link da foto de perfil (opcional)" type="url" placeholder="https://exemplo.com/foto.png" hint="Informe o endereço completo da imagem, incluindo https://." error={touchedFields.avatarUrl || isSubmitted ? errors.avatarUrl?.message : undefined} {...register("avatarUrl")} />
+            <FormField id="githubUrl" label="GitHub (opcional)" type="url" placeholder="https://github.com/seu-usuario" error={touchedFields.githubUrl || isSubmitted ? errors.githubUrl?.message : undefined} {...register("githubUrl")} />
             {feedback && <Feedback error={feedback.error}>{feedback.message}</Feedback>}
             <div className="flex flex-wrap items-start gap-3">
               <Button type="submit" loading={updateProfile.isPending} loadingText="Salvando...">Salvar alterações</Button>

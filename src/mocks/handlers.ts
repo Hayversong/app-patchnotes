@@ -87,7 +87,12 @@ export const handlers = [
   http.get("/api/dashboard/metrics", async ({ request }) => {
     await delay(350);
     if (!authenticatedUser(request)) return unauthorized();
-    return HttpResponse.json({ totalEntries: entries.length, tokensUsed, activeTime: 326, streak: 7 });
+    return HttpResponse.json({
+      totalEntries: entries.length,
+      tokensUsed,
+      activeTime: "5h 26min",
+      messagesExchanged: 42,
+    });
   }),
 
   http.get("/api/devlog/entries", async ({ request }) => {

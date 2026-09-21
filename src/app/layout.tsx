@@ -15,7 +15,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Patchnotes — Assistente para game devs",
+  title: "Patchnotes",
   description: "Documente progresso, explore mecânicas e acompanhe as metas do seu jogo.",
 };
 

@@ -22,7 +22,7 @@ export function DevlogView() {
   const entries = useDevlogEntries();
   const createEntry = useCreateDevlogEntry();
   const [feedback, setFeedback] = useState<{ message: string; error?: boolean } | null>(null);
-  const { register, handleSubmit, reset, setFocus, formState: { errors, isDirty } } = useForm<DevlogFormData>({
+  const { register, handleSubmit, reset, setFocus, formState: { errors, touchedFields, isSubmitted, isDirty } } = useForm<DevlogFormData>({
     ...formOptions, resolver: zodResolver(devlogSchema), defaultValues: { title: "", content: "", tags: "" },
   });
 
@@ -61,9 +61,9 @@ export function DevlogView() {
         <aside className="min-w-0 lg:sticky lg:top-8"><Card><CardHeader><CardTitle className="flex items-center gap-2"><Plus aria-hidden="true" className="size-5 text-lime-400" /> Nova entrada</CardTitle></CardHeader><CardContent>
           <form onSubmit={onSubmit} onChange={() => setFeedback(null)} aria-busy={createEntry.isPending} noValidate>
             <fieldset disabled={createEntry.isPending} className="min-w-0 space-y-5">
-              <FormField id="title" label="Título" hint="Resuma seu progresso em pelo menos 3 caracteres." error={errors.title?.message} {...register("title")} />
-              <TextareaField id="content" label="Progresso" rows={7} hint="O que você desenvolveu ou aprendeu? Use pelo menos 10 caracteres." error={errors.content?.message} {...register("content")} />
-              <FormField id="tags" label="Marcadores (opcional)" hint="Separe por vírgulas. Exemplo: gameplay, combate." error={errors.tags?.message} {...register("tags")} />
+              <FormField id="title" label="Título" hint="Resuma seu progresso em pelo menos 3 caracteres." error={touchedFields.title || isSubmitted ? errors.title?.message : undefined} {...register("title")} />
+              <TextareaField id="content" label="Progresso" rows={7} hint="O que você desenvolveu ou aprendeu? Use pelo menos 10 caracteres." error={touchedFields.content || isSubmitted ? errors.content?.message : undefined} {...register("content")} />
+              <FormField id="tags" label="Marcadores (opcional)" hint="Separe por vírgulas. Exemplo: gameplay, combate." error={touchedFields.tags || isSubmitted ? errors.tags?.message : undefined} {...register("tags")} />
               {feedback && <Feedback error={feedback.error}>{feedback.message}</Feedback>}
               <Button type="submit" className="w-full" loading={createEntry.isPending} loadingText="Salvando...">Salvar entrada</Button>
               <DiscardChanges disabled={!isDirty || createEntry.isPending} onConfirm={() => { reset(); setFeedback(null); }} />

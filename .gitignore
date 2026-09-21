@@ -7,6 +7,7 @@
 /docs/
 *.md
 !README.md
+!CHECKPOINT.md
 !**/LICENSE.md
 !**/LICENCE.md
 

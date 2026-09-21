@@ -20,18 +20,26 @@ function startMockWorker() {
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
-  const [mockError, setMockError] = useState(false);
+  const [mockError] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    startMockWorker()
+    // Do not block the entire application indefinitely on the development
+    // service worker. In some browsers a stale worker registration can leave
+    // `worker.start()` pending even though the page itself is healthy.
+    const startupTimeout = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 1500);
+    });
+
+    Promise.race([startMockWorker(), startupTimeout])
       .then(() => {
         if (active) setReady(true);
       })
       .catch((error) => {
         console.error("Falha ao iniciar a API simulada:", error);
-        if (active) setMockError(true);
+        // The UI remains usable even when the optional mock API cannot start.
+        if (active) setReady(true);
       });
 
     return () => {

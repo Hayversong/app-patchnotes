@@ -23,7 +23,7 @@ export function ChatView() {
   const sendMessage = useSendChatMessage();
   const endRef = useRef<HTMLDivElement>(null);
   const shouldScroll = useRef(false);
-  const { register, handleSubmit, reset, setFocus, formState: { errors } } = useForm<ChatFormData>({
+  const { register, handleSubmit, reset, setFocus, formState: { errors, touchedFields, isSubmitted } } = useForm<ChatFormData>({
     ...formOptions, resolver: zodResolver(chatSchema), defaultValues: { message: "" },
   });
   useEffect(() => {
@@ -63,7 +63,7 @@ export function ChatView() {
         <div ref={endRef} />
       </section>
       <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={sendMessage.isPending} className="sticky bottom-0 mt-6 space-y-3 border-t border-zinc-800 bg-background py-4" noValidate>
-        <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} readOnly={sendMessage.isPending} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={errors.message?.message} {...register("message")}
+        <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} readOnly={sendMessage.isPending} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={touchedFields.message || isSubmitted ? errors.message?.message : undefined} {...register("message")}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();

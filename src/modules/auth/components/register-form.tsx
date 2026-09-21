@@ -17,7 +17,7 @@ export function RegisterForm() {
   const router = useRouter();
   const registerMutation = useRegisterMutation();
   const [serverError, setServerError] = useState<string | null>(null);
-  const { register, handleSubmit, formState: { errors } } = useForm<RegisterFormData>({
+  const { register, handleSubmit, formState: { errors, touchedFields, isSubmitted } } = useForm<RegisterFormData>({
     ...formOptions,
     resolver: zodResolver(registerSchema),
     defaultValues: { name: "", email: "", password: "", passwordConfirmation: "" },
@@ -36,10 +36,10 @@ export function RegisterForm() {
   return (
     <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={registerMutation.isPending} noValidate>
       <fieldset className="min-w-0 space-y-5" disabled={registerMutation.isPending}>
-      <FormField id="name" autoFocus label="Nome" hint="Use pelo menos 2 caracteres." autoComplete="name" error={errors.name?.message} {...register("name")} />
-      <FormField id="email" label="E-mail" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
-      <FormField id="password" label="Senha" hint="Use pelo menos 8 caracteres." type="password" autoComplete="new-password" error={errors.password?.message} {...register("password")} />
-      <FormField id="passwordConfirmation" label="Confirme a senha" hint="Digite novamente a senha escolhida." type="password" autoComplete="new-password" error={errors.passwordConfirmation?.message} {...register("passwordConfirmation")} />
+      <FormField id="name" autoFocus label="Nome" hint="Use pelo menos 2 caracteres." autoComplete="name" error={touchedFields.name || isSubmitted ? errors.name?.message : undefined} {...register("name")} />
+      <FormField id="email" label="E-mail" type="email" autoComplete="email" error={touchedFields.email || isSubmitted ? errors.email?.message : undefined} {...register("email")} />
+      <FormField id="password" label="Senha" hint="Use pelo menos 8 caracteres." type="password" autoComplete="new-password" error={touchedFields.password || isSubmitted ? errors.password?.message : undefined} {...register("password")} />
+      <FormField id="passwordConfirmation" label="Confirme a senha" hint="Digite novamente a senha escolhida." type="password" autoComplete="new-password" error={touchedFields.passwordConfirmation || isSubmitted ? errors.passwordConfirmation?.message : undefined} {...register("passwordConfirmation")} />
       {serverError ? <Feedback error>{serverError}</Feedback> : null}
       <Button type="submit" className="w-full" loading={registerMutation.isPending} loadingText="Criando conta...">Criar conta</Button>
     </fieldset>

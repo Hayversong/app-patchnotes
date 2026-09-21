@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, Cpu, Flame, Timer, Trophy } from "lucide-react";
+import { BookOpenText, Cpu, MessagesSquare, Timer } from "lucide-react";
 import Link from "next/link";
 import { DashboardHeading } from "./dashboard-heading";
 import { AnimatedGroup } from "@/components/motion-primitives/animated-group";
@@ -21,10 +21,10 @@ export function DashboardView() {
   if (metrics.isError || entries.isError || !metrics.data || !entries.data) return <div className="space-y-8">{heading}<ErrorState message="Não foi possível carregar seu resumo." pending={metrics.isFetching || entries.isFetching} retry={() => { void metrics.refetch(); void entries.refetch(); }} /></div>;
 
   const cards = [
-    { label: "Entradas no diário", value: metrics.data.totalEntries, icon: BookOpenText },
-    { label: "Uso do assistente", value: metrics.data.tokensUsed, icon: Cpu },
-    { label: "Tempo ativo", value: metrics.data.activeTime, icon: Timer },
-    { label: "Sequência", value: metrics.data.streak, icon: Flame },
+    { label: "Devlogs registrados", value: metrics.data.totalEntries, icon: BookOpenText, animated: true },
+    { label: "Tokens consumidos", value: metrics.data.tokensUsed, icon: Cpu, animated: true },
+    { label: "Tempo de uso", value: metrics.data.activeTime, icon: Timer, animated: false },
+    { label: "Mensagens trocadas", value: metrics.data.messagesExchanged, icon: MessagesSquare, animated: true },
   ];
 
   return (
@@ -32,16 +32,17 @@ export function DashboardView() {
       {heading}
       <section aria-label="Estatísticas do projeto">
         <AnimatedGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(({ label, value, icon: Icon }) => (
-          <Card key={label} variant={label === "Sequência" && metrics.data.streak > 0 ? "achievement" : "stat"}>
+        {cards.map(({ label, value, icon: Icon, animated }) => (
+          <Card key={label} variant="stat">
             <CardContent>
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-sm border border-lime-400/20 bg-lime-400/5"><Icon aria-hidden="true" className="size-4 text-lime-400" /></span>
               </div>
-              <p className="mt-4 break-words font-mono text-2xl font-semibold tracking-tight tabular-nums"><AnimatedNumber value={value} format={label === "Tempo ativo" ? "minutes" : "number"} suffix={label === "Sequência" ? " dias" : ""} /></p>
-              {label === "Uso do assistente" && <p className="mt-3 text-xs leading-5 text-muted-foreground">Tokens: unidades de texto processadas.</p>}
-              {label === "Sequência" && <p className="mt-3 flex items-center gap-2 font-mono text-xs text-lime-400">{metrics.data.streak > 0 && <Trophy aria-hidden="true" className="size-3.5 shrink-0" />}{metrics.data.streak > 0 ? "Sequência ativa" : "Comece sua sequência"}</p>}
+              <p className="mt-4 break-words font-mono text-2xl font-semibold tracking-tight tabular-nums">
+                {animated && typeof value === "number" ? <AnimatedNumber value={value} format="number" /> : value}
+              </p>
+              {label === "Tokens consumidos" && <p className="mt-3 text-xs leading-5 text-muted-foreground">Tokens: unidades de texto processadas.</p>}
             </CardContent>
           </Card>
         ))}
