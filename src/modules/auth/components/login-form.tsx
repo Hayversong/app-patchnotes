@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { getApiErrorMessage } from "@/lib/axios";
 import { useLoginMutation } from "@/modules/auth/hooks/use-auth";
 import { loginSchema, type LoginFormData } from "@/modules/auth/schemas/login.schema";
+import { AuthItem } from "./auth-motion";
 
 export function LoginForm() {
   const router = useRouter();
@@ -36,10 +37,10 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={loginMutation.isPending} noValidate>
       <fieldset className="min-w-0 space-y-5" disabled={loginMutation.isPending}>
-      <FormField id="email" autoFocus label="E-mail" type="email" autoComplete="email" placeholder="voce@exemplo.com" error={touchedFields.email || isSubmitted ? errors.email?.message : undefined} {...register("email")} />
-      <FormField id="password" label="Senha" type="password" autoComplete="current-password" error={touchedFields.password || isSubmitted ? errors.password?.message : undefined} {...register("password")} />
-      {serverError ? <Feedback error>{serverError}</Feedback> : null}
-      <Button type="submit" className="w-full" loading={loginMutation.isPending} loadingText="Entrando...">Entrar</Button>
+      <AuthItem><FormField className="transition-transform motion-safe:focus-visible:scale-[1.01]" id="email" autoFocus label="E-mail" type="email" autoComplete="email" placeholder="voce@exemplo.com" error={touchedFields.email || isSubmitted ? errors.email?.message : undefined} {...register("email")} /></AuthItem>
+      <AuthItem><FormField className="transition-transform motion-safe:focus-visible:scale-[1.01]" id="password" label="Senha" type="password" autoComplete="current-password" error={touchedFields.password || isSubmitted ? errors.password?.message : undefined} {...register("password")} /></AuthItem>
+      {serverError ? <AuthItem><Feedback error>{serverError}</Feedback></AuthItem> : null}
+      <AuthItem><Button type="submit" className="w-full motion-safe:hover:scale-[1.01]" loading={loginMutation.isPending} loadingText="Entrando...">Entrar</Button></AuthItem>
     </fieldset>
     </form>
   );
