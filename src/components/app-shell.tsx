@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { SidebarLabel } from "@/components/motion-primitives/sidebar-label";
 import { TransitionPanel } from "@/components/motion-primitives/transition-panel";
+import { SidebarGradientBackground } from "@/components/effects/sidebar-gradient-background";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/feedback";
@@ -58,6 +59,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       className="min-h-screen bg-background text-foreground">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-background focus:p-3">Pular para o conteúdo</a>
       <aside aria-label="Menu lateral" className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] flex-col overflow-y-auto overflow-x-hidden border-r border-zinc-800 bg-zinc-950 px-3 py-5 md:flex">
+        <SidebarGradientBackground />
+        <div className="relative z-10 flex min-h-full flex-1 flex-col">
         <div className={cn("flex h-28 shrink-0 gap-3", collapsed ? "flex-col items-center justify-center" : "items-center justify-between")}>
           <Link href="/dashboard" aria-label="Patchnotes — Dashboard" className="flex h-11 min-w-0 items-center px-2 font-mono text-sm font-semibold tracking-[0.18em] text-lime-400">
             <TransitionPanel activeIndex={collapsed ? 0 : 1} className="relative overflow-hidden">
@@ -87,6 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Tooltip label="Sair" enabled={collapsed}>
             <Button variant="ghost" aria-label="Sair da conta" className={cn("mt-3 w-full gap-0 text-zinc-400", !collapsed && "justify-start")} onClick={logout}><LogOut aria-hidden="true" /><SidebarLabel collapsed={collapsed}>Sair</SidebarLabel></Button>
           </Tooltip>
+        </div>
         </div>
       </aside>
       <div className="md:pl-[var(--sidebar-width)]">
