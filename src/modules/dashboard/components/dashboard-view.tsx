@@ -11,12 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDashboardMetrics } from "@/modules/dashboard/hooks/use-dashboard";
 import { useDevlogEntries } from "@/modules/devlog/hooks/use-devlog";
+import { ActivityHeatmap, EntriesByTagChart, TokenUsageChart } from "./dashboard-charts";
 
 export function DashboardView() {
   const metrics = useDashboardMetrics();
   const entries = useDevlogEntries();
 
-  const heading = <DashboardHeading />;
+  const heading = <DashboardHeading streak={metrics.data?.streak} />;
   if (metrics.isLoading || entries.isLoading) return <div className="space-y-8">{heading}<LoadingState label="Carregando seu resumo..." /></div>;
   if (metrics.isError || entries.isError || !metrics.data || !entries.data) return <div className="space-y-8">{heading}<ErrorState message="Não foi possível carregar seu resumo." pending={metrics.isFetching || entries.isFetching} retry={() => { void metrics.refetch(); void entries.refetch(); }} /></div>;
 
@@ -47,6 +48,11 @@ export function DashboardView() {
           </Card>
         ))}
         </AnimatedGroup>
+      </section>
+      <ActivityHeatmap />
+      <section className="grid gap-4 lg:grid-cols-2" aria-label="Análises do dashboard">
+        <TokenUsageChart />
+        <EntriesByTagChart />
       </section>
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between"><CardTitle>Últimas entradas</CardTitle><Link href="/devlog" className="text-sm text-lime-400 hover:text-lime-300">Ver devlog</Link></CardHeader>

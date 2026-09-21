@@ -92,7 +92,30 @@ export const handlers = [
       tokensUsed,
       activeTime: "5h 26min",
       messagesExchanged: 42,
+      streak: 4,
     });
+  }),
+
+  http.get("/api/dashboard/activity-heatmap", async ({ request }) => {
+    await delay(250);
+    if (!authenticatedUser(request)) return unauthorized();
+    const today = new Date("2026-09-21T12:00:00Z");
+    const counts = [0, 1, 2, 4, 1, 0, 3, 5, 2, 1, 0, 6, 3, 2, 7, 1, 0, 4, 2, 8, 3, 1, 5, 0, 2, 4, 1, 3, 6, 2];
+    return HttpResponse.json({ days: Array.from({ length: 90 }, (_, index) => { const date = new Date(today); date.setUTCDate(today.getUTCDate() - (89 - index)); return { date: date.toISOString().slice(0, 10), count: counts[index % counts.length] }; }) });
+  }),
+
+  http.get("/api/dashboard/token-usage", async ({ request }) => {
+    await delay(250);
+    if (!authenticatedUser(request)) return unauthorized();
+    const period = new URL(request.url).searchParams.get("period") === "30d" ? 30 : 7;
+    const base = [820, 1460, 980, 2130, 1740, 2680, 1940, 2310, 1280, 1860];
+    return HttpResponse.json({ points: Array.from({ length: period }, (_, index) => { const date = new Date("2026-09-21T12:00:00Z"); date.setUTCDate(date.getUTCDate() - (period - 1 - index)); return { date: date.toISOString().slice(0, 10), tokens: base[index % base.length] + (index * 73) % 500 }; }) });
+  }),
+
+  http.get("/api/dashboard/entries-by-tag", async ({ request }) => {
+    await delay(250);
+    if (!authenticatedUser(request)) return unauthorized();
+    return HttpResponse.json({ tags: [{ tag: "gameplay", count: 18 }, { tag: "combate", count: 14 }, { tag: "física", count: 11 }, { tag: "player", count: 8 }, { tag: "UI", count: 6 }, { tag: "áudio", count: 3 }] });
   }),
 
   http.get("/api/devlog/entries", async ({ request }) => {

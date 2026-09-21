@@ -17,9 +17,9 @@ export function RouteTransition({ children }: { children: React.ReactNode }) {
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["role"] });
     return () => observer.disconnect();
   }, []);
-  return <motion.div ref={ref} initial={false}
-    animate={{ opacity: reduced || hasError ? 1 : [0.92, 1] }}
-    transition={{ duration: reduced || hasError ? 0 : 0.14 }}>
+  return <motion.div ref={ref} initial={reduced || hasError ? false : { opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: reduced || hasError ? 0 : 0.2, ease: "easeOut" }} className="will-change-[opacity,transform]">
     {children}
   </motion.div>;
 }
