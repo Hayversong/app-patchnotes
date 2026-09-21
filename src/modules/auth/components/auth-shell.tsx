@@ -4,7 +4,9 @@ import Link from "next/link";
 
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { motion, useReducedMotion } from "motion/react";
-import { AuthBrand, AuthItem, AuthStagger } from "./auth-motion";
+import { AnimatedBackground } from "./animated-background";
+import { AuthItem, AuthStagger } from "./auth-motion";
+import { LogoBrand } from "./logo-brand";
 
 export function AuthShell({
   title,
@@ -19,13 +21,14 @@ export function AuthShell({
 }) {
   const reduced = useReducedMotion();
   return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <div className="w-full max-w-md">
+    <main className="relative grid min-h-screen place-items-center overflow-hidden px-4 py-10">
+      <AnimatedBackground />
+      <div className="relative z-10 w-full max-w-md">
         <Link href="/" className="mb-8 block w-fit font-mono text-sm font-semibold">
-          <AuthBrand />
+          <LogoBrand />
         </Link>
         <motion.div initial={reduced ? false : { opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 25 }} className="will-change-[opacity,transform]">
-          <Card className="shadow-2xl shadow-black/30">
+          <Card className="border-white/10 bg-card/95 shadow-2xl shadow-black/50">
             <AuthStagger>
               <CardHeader><AuthItem><h1 className="text-2xl font-semibold tracking-tight">{title}</h1></AuthItem><AuthItem><CardDescription>{description}</CardDescription></AuthItem></CardHeader>
               <CardContent>{children}</CardContent>

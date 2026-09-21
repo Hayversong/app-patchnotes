@@ -6,8 +6,8 @@
 .docs/
 /docs/
 *.md
+checkpoint.md
 !README.md
-!CHECKPOINT.md
 !**/LICENSE.md
 !**/LICENCE.md
 
