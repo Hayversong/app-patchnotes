@@ -25,6 +25,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
 
+    if (process.env.NODE_ENV !== "development") {
+      setReady(true);
+      return () => {
+        active = false;
+      };
+    }
+
     // Do not block the entire application indefinitely on the development
     // service worker. In some browsers a stale worker registration can leave
     // `worker.start()` pending even though the page itself is healthy.

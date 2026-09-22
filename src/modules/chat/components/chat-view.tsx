@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Bot, Send, UserRound } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { TextareaField } from "@/components/form-field";
@@ -13,7 +13,7 @@ import { EmptyState, Feedback } from "@/components/ui/feedback";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formOptions } from "@/lib/form-options";
-import { useSendChatMessage } from "@/modules/chat/hooks/use-chat";
+import { useChatHistory, useSendChatMessage } from "@/modules/chat/hooks/use-chat";
 import { chatSchema, type ChatFormData } from "@/modules/chat/schemas/chat.schema";
 import type { ChatMessage } from "@/modules/chat/types/chat.types";
 
@@ -50,8 +50,8 @@ function MessageBubble({ message, onTypingComplete }: { message: ChatMessage; on
 }
 
 export function ChatView() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [serverError, setServerError] = useState<string | null>(null);
+  const chatHistory = useChatHistory();
   const sendMessage = useSendChatMessage();
   const reduced = useReducedMotion();
   const endRef = useRef<HTMLDivElement>(null);
@@ -62,21 +62,18 @@ export function ChatView() {
   const scrollToEnd = useCallback(() => { if (nearBottomRef.current) endRef.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" }); }, [reduced]);
 
   useEffect(() => { updateNearBottom(); window.addEventListener("scroll", updateNearBottom, { passive: true }); return () => window.removeEventListener("scroll", updateNearBottom); }, [updateNearBottom]);
+  const messages = useMemo(() => chatHistory.data?.messages ?? [], [chatHistory.data?.messages]);
   useEffect(() => { requestAnimationFrame(scrollToEnd); }, [messages, scrollToEnd, sendMessage.isPending]);
 
   const onSubmit = handleSubmit(async ({ message }) => {
     if (sendMessage.isPending) return;
     setServerError(null);
     const shouldFollow = nearBottomRef.current;
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: message };
-    setMessages((current) => [...current, userMessage]);
     nearBottomRef.current = shouldFollow;
     try {
-      const response = await sendMessage.mutateAsync({ message });
-      setMessages((current) => [...current, response]);
+      await sendMessage.mutateAsync({ message });
       reset();
     } catch (error) {
-      setMessages((current) => current.filter((item) => item.id !== userMessage.id));
       setServerError(getApiErrorMessage(error, "Não foi possível enviar a mensagem. Seu texto foi mantido; tente novamente."));
     }
     requestAnimationFrame(() => setFocus("message"));
@@ -85,7 +82,9 @@ export function ChatView() {
   return <div className="flex min-h-[calc(100dvh-10rem)] min-w-0 flex-col md:min-h-[calc(100dvh-4rem)]">
     <PageHeading eyebrow="Parceiro de criação" title="Assistente" description="Explore ideias e organize o desenvolvimento do seu jogo." />
     <section className="mt-8 flex-1 space-y-5" role="log" aria-label="Conversa com o assistente" aria-relevant="additions text">
-      {messages.length === 0 && <EmptyState title="Comece uma conversa"><p>Peça ajuda com uma mecânica, organize decisões ou transforme seu progresso em notas de atualização.</p></EmptyState>}
+      {chatHistory.isLoading && <EmptyState title="Carregando conversa"><p>Buscando seu histórico de mensagens...</p></EmptyState>}
+      {chatHistory.isError && <Feedback error>Não foi possível carregar o histórico da conversa.</Feedback>}
+      {!chatHistory.isLoading && !chatHistory.isError && messages.length === 0 && <EmptyState title="Comece uma conversa"><p>Peça ajuda com uma mecânica, organize decisões ou transforme seu progresso em notas de atualização.</p></EmptyState>}
       {messages.map((message) => <MessageBubble key={message.id} message={message} onTypingComplete={scrollToEnd} />)}
       <AnimatePresence initial={false}>
         {sendMessage.isPending && <motion.article key="processing" role="status" aria-label="Assistente processando" className="flex gap-3" initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: reduced ? 0 : 0.15 }}><Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" /><div className="flex h-12 items-center rounded-xl border border-zinc-800 bg-zinc-950 px-4"><TypingDots /></div></motion.article>}
@@ -93,7 +92,7 @@ export function ChatView() {
       <div ref={endRef} />
     </section>
     <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={sendMessage.isPending} className="sticky bottom-0 mt-6 space-y-3 border-t border-zinc-800 bg-background py-4" noValidate>
-      <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} readOnly={sendMessage.isPending} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={touchedFields.message || isSubmitted ? errors.message?.message : undefined} {...register("message")} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!sendMessage.isPending) event.currentTarget.form?.requestSubmit(); } }} />
+      <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} disabled={sendMessage.isPending} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={touchedFields.message || isSubmitted ? errors.message?.message : undefined} {...register("message")} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!sendMessage.isPending) event.currentTarget.form?.requestSubmit(); } }} />
       {serverError && <Feedback error>{serverError}</Feedback>}
       <div className="flex justify-end"><Button type="submit" disabled={sendMessage.isPending} aria-busy={sendMessage.isPending}><span className="relative flex size-4 items-center justify-center"><AnimatePresence initial={false} mode="wait">{sendMessage.isPending ? <motion.span key="dots" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TypingDots compact /></motion.span> : <motion.span key="send" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Send aria-hidden="true" className="size-4" /></motion.span>}</AnimatePresence></span>{sendMessage.isPending ? "Enviando..." : "Enviar mensagem"}</Button></div>
     </form>
