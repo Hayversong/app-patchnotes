@@ -24,9 +24,13 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 class _TestEnv(BaseSettings):
     model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", extra="ignore")
     test_database_url: str
+    # Opcional: sem ele, os testes que exigem Redis são pulados (na CI ele é obrigatório).
+    test_redis_url: str | None = None
 
 
-TEST_DATABASE_URL = _TestEnv().test_database_url  # type: ignore[call-arg]
+_ENV = _TestEnv()  # type: ignore[call-arg]
+TEST_DATABASE_URL = _ENV.test_database_url
+TEST_REDIS_URL = _ENV.test_redis_url
 assert "test" in TEST_DATABASE_URL.rsplit("/", 1)[-1], "TEST_DATABASE_URL precisa apontar para um banco de testes"
 
 TABLES = ["token_usage", "chat_messages", "devlog_entries", "password_reset_tokens", "refresh_tokens", "users"]
@@ -128,11 +132,12 @@ class Harness:
         return {"Authorization": f"Bearer {token}"}
 
 
-def build_harness(settings: Settings, llm: FakeLLM | None = None) -> Iterator[Harness]:
+def build_harness(settings: Settings, llm: FakeLLM | None = None, *, peer: str = "testclient") -> Iterator[Harness]:
+    """`peer` é o IP de origem da conexão TCP (simula o proxy reverso ou o cliente direto)."""
     llm = llm or FakeLLM()
     mailer = FakeMailer()
     app = create_app(settings, llm=llm, mailer=mailer)
-    with TestClient(app, headers={"Origin": ORIGIN}) as client:
+    with TestClient(app, headers={"Origin": ORIGIN}, client=(peer, 50000)) as client:
         harness = Harness(client, llm, mailer, settings)
         harness.sql(f"TRUNCATE {', '.join(TABLES)} CASCADE")
         yield harness

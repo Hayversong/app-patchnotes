@@ -135,7 +135,7 @@ async def _serve(websocket: WebSocket, settings: Settings) -> None:
             await _send_error(websocket, "unauthorized", "Sessão inválida ou expirada. Entre novamente.")
             await websocket.close(CLOSE_UNAUTHORIZED)
             return
-        if settings.rate_limit_enabled and not limiter.hit(f"chat:{user.id}", CHAT_RATE_LIMIT, 60):
+        if settings.rate_limit_enabled and not await limiter.allow(f"chat:{user.id}", CHAT_RATE_LIMIT, 60):
             await _send_error(websocket, "rate_limited", RATE_LIMIT_MESSAGE)
             continue
 

@@ -1,3 +1,4 @@
+import ipaddress
 from functools import lru_cache
 from typing import Annotated, Literal
 
@@ -27,8 +28,15 @@ class Settings(BaseSettings):
     refresh_cookie_name: str = "patchnotes_refresh"
     cookie_secure: bool = False
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+    # Proxies reversos confiáveis (IPs ou redes CIDR, separados por vírgula). Só conexões vindas deles têm o
+    # X-Forwarded-For lido. Vazio = usa o IP da conexão. NÃO inclua o servidor Next.js: o rewrite dele repassa
+    # o X-Forwarded-For enviado pelo cliente sem acrescentar o IP real.
+    trusted_proxies: Annotated[list[str], NoDecode] = []
+    # Substituído por TRUSTED_PROXIES; mantido só para recusar configurações antigas com true.
     trust_proxy_headers: bool = False
     rate_limit_enabled: bool = True
+    # Estado compartilhado entre réplicas (limites de requisição e de conexões WebSocket). Obrigatório em production.
+    redis_url: str | None = None
     max_request_body_bytes: int = Field(default=64 * 1024, ge=1024)
 
     password_reset_ttl_minutes: int = Field(default=30, ge=5, le=24 * 60)
@@ -60,6 +68,25 @@ class Settings(BaseSettings):
     ws_auth_timeout_seconds: float = Field(default=5, gt=0)
     ws_max_frame_bytes: int = Field(default=16 * 1024, ge=1024)
 
+    @field_validator("trusted_proxies", mode="before")
+    @classmethod
+    def split_proxies(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def check_proxies(cls, value: list[str]) -> list[str]:
+        for item in value:
+            try:
+                network = ipaddress.ip_network(item, strict=False)
+            except ValueError as error:
+                raise ValueError(f"TRUSTED_PROXIES: '{item}' não é um IP ou rede CIDR") from error
+            if network.prefixlen == 0:
+                raise ValueError("TRUSTED_PROXIES não aceita 0.0.0.0/0 nem ::/0 (confiaria em qualquer cliente)")
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_origins(cls, value: object) -> object:
@@ -75,6 +102,10 @@ class Settings(BaseSettings):
             raise ValueError("CORS_ORIGINS não aceita '*'; liste as origens explicitamente")
         if self.environment == "production" and not self.cookie_secure:
             raise ValueError("COOKIE_SECURE=true é obrigatório em production")
+        if self.trust_proxy_headers:
+            raise ValueError("TRUST_PROXY_HEADERS foi removido: liste os proxies em TRUSTED_PROXIES (IPs ou CIDR)")
+        if self.environment == "production" and not self.redis_url:
+            raise ValueError("REDIS_URL é obrigatório em production (limites compartilhados entre réplicas)")
         if self.smtp_starttls and self.smtp_use_tls:
             raise ValueError("Use SMTP_STARTTLS ou SMTP_USE_TLS, não ambos")
         return self

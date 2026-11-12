@@ -23,7 +23,7 @@ async def history(user: CurrentUser, chat: ChatServiceDep) -> ChatHistoryRespons
 @router.post("/send", response_model=SendChatResponse)
 async def send(body: SendChatRequest, request: Request, user: CurrentUser, chat: ChatServiceDep) -> SendChatResponse:
     """Mesmo contrato da Parte 1: devolve a resposta completa. A rota não mantém sessão de banco durante a geração."""
-    enforce(request, "chat", str(user.id), limit=CHAT_RATE_LIMIT, window_seconds=60)
+    await enforce(request, "chat", str(user.id), limit=CHAT_RATE_LIMIT, window_seconds=60)
     try:
         answer = await chat.reply(user.id, body.message, body.context)
     except LLMError as error:

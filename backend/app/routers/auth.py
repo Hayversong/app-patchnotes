@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.errors import ApiError, unauthorized
-from app.core.rate_limit import client_ip, enforce, limit_by_ip
+from app.core.rate_limit import client_ip, enforce, ensure_below, identifier_key, limit_by_ip, record
 from app.routers.deps import CurrentUser, SessionDep, SettingsDep
 from app.schemas.auth import (
     AuthResponse,
@@ -22,6 +22,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 REFRESH_COOKIE_PATH = "/api/auth"
 FORGOT_PASSWORD_MESSAGE = "Se o e-mail estiver cadastrado, você receberá as instruções para redefinir a senha."
+
+LOGIN_PER_IP = 20  # tentativas por minuto
+LOGIN_FAILURES_PER_EMAIL_IP = 10  # falhas por 5 min
+LOGIN_FAILURES_PER_EMAIL = 100  # falhas por hora, somando todos os IPs
 
 
 def _set_refresh_cookie(response: Response, settings: Settings, raw_token: str) -> None:
@@ -50,9 +54,20 @@ def _auth_response(response: Response, settings: Settings, issued: auth_service.
 
 @router.post("/login", response_model=AuthResponse, response_model_exclude_none=True)
 async def login(body: LoginRequest, request: Request, response: Response, session: SessionDep, settings: SettingsDep) -> AuthResponse:
-    enforce(request, "login-ip", client_ip(request, settings.trust_proxy_headers), limit=20, window_seconds=60)
-    enforce(request, "login-email", body.email, limit=10, window_seconds=300)
-    issued = await auth_service.login(session, settings, email=body.email, password=body.password)
+    ip = client_ip(request)
+    email = identifier_key(body.email)
+    await enforce(request, "login-ip", ip, limit=LOGIN_PER_IP, window_seconds=60)
+    # Contam só FALHAS e por (e-mail, IP): um terceiro não bloqueia o login da vítima a partir do IP dela.
+    # O teto por e-mail (alto) segura força bruta distribuída sem virar um botão de bloqueio fácil.
+    await ensure_below(request, "login-fail", f"{email}:{ip}", limit=LOGIN_FAILURES_PER_EMAIL_IP, window_seconds=300)
+    await ensure_below(request, "login-fail-email", email, limit=LOGIN_FAILURES_PER_EMAIL, window_seconds=3600)
+    try:
+        issued = await auth_service.login(session, settings, email=body.email, password=body.password)
+    except ApiError as error:
+        if error.status_code == 401:
+            await record(request, "login-fail", f"{email}:{ip}", window_seconds=300)
+            await record(request, "login-fail-email", email, window_seconds=3600)
+        raise
     return _auth_response(response, settings, issued)
 
 
@@ -98,7 +113,10 @@ async def logout(request: Request, session: SessionDep, settings: SettingsDep) -
 @router.post("/forgot-password", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED,
              dependencies=[Depends(limit_by_ip("forgot", limit=5, window_seconds=900))])
 async def forgot_password(body: ForgotPasswordRequest, request: Request, background: BackgroundTasks, session: SessionDep, settings: SettingsDep) -> MessageResponse:
-    enforce(request, "forgot-email", body.email, limit=3, window_seconds=900)
+    # Por (e-mail, IP) e um teto por e-mail: impede inundar a caixa da vítima sem deixar um terceiro esgotar a cota dela.
+    email = identifier_key(body.email)
+    await enforce(request, "forgot-email-ip", f"{email}:{client_ip(request)}", limit=3, window_seconds=900)
+    await enforce(request, "forgot-email", email, limit=10, window_seconds=3600)
     result = await auth_service.request_password_reset(session, settings, body.email)
     if result is not None:
         user, raw_token = result
