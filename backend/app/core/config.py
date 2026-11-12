@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(default=10, ge=1)
 
     jwt_secret: SecretStr
-    access_token_ttl_minutes: int = Field(default=1440, ge=1)
+    access_token_ttl_minutes: int = Field(default=15, ge=1)
     refresh_token_ttl_days: int = Field(default=7, ge=1)
     refresh_cookie_name: str = "patchnotes_refresh"
     cookie_secure: bool = False
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_temperature: float = Field(default=0.7, ge=0, le=2)
-    ollama_num_ctx: int = Field(default=4096, ge=512)
+    ollama_num_ctx: int = Field(default=2048, ge=512)
     ollama_max_output_tokens: int = Field(default=512, ge=16)
     ollama_connect_timeout: float = Field(default=5, gt=0)
     ollama_read_timeout: float = Field(default=60, gt=0)
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     ollama_keep_alive: str = "5m"
 
     chat_system_prompt: str = DEFAULT_SYSTEM_PROMPT
-    chat_context_messages: int = Field(default=10, ge=0, le=50)
+    chat_context_messages: int = Field(default=6, ge=0, le=50)
     chat_history_max: int = Field(default=200, ge=1, le=1000)
     monthly_token_quota: int = Field(default=100_000, ge=0)
 
