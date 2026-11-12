@@ -7,6 +7,11 @@ const TOKEN_COOKIE = "patchnotes_token";
 // mas a sessão é renovada automaticamente enquanto o refresh for válido.
 const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
+/** Em HTTPS o cookie só trafega cifrado. Em http://localhost (desenvolvimento) o atributo impediria o cookie. */
+function secureAttribute(): string {
+  return typeof window !== "undefined" && window.location.protocol === "https:" ? "; secure" : "";
+}
+
 function readTokenCookie(): string | null {
   if (typeof document === "undefined") return null;
   const prefix = `${TOKEN_COOKIE}=`;
@@ -29,12 +34,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: readTokenCookie(),
   sessionExpired: false,
   setSession: (user, token) => {
-    document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${SESSION_MAX_AGE_SECONDS}; samesite=lax`;
+    document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${SESSION_MAX_AGE_SECONDS}; samesite=lax${secureAttribute()}`;
     set({ user, token, sessionExpired: false });
   },
   setUser: (user) => set({ user }),
   clearSession: (options) => {
-    document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; samesite=lax`;
+    document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; samesite=lax${secureAttribute()}`;
     set({ user: null, token: null, sessionExpired: options?.expired ?? false });
   },
 }));
