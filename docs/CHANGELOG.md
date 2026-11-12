@@ -4,6 +4,11 @@ Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada ite
 
 ## 12/11/2026
 
+### `docs(revisão)` — revisão de arquitetura e segurança
+- `docs/REVISAO_ARQUITETURA_SEGURANCA.md`: revisão estática do frontend e do backend (somente relatório, sem mudança de código).
+- Principal achado: **S1 (alta, comprovado)** — `PATCH /profile` usa `session.merge` e pode desfazer uma redefinição de senha concorrente (hash antigo e `tokens_valid_after` regravados). Demais: IP do cliente atrás do rewrite do Next (S2), WebSocket sem limite de conexões (S3), limpeza do rate limiter (S4), cookie de access token legível por JS e sem CSP (S5), entre outros.
+- Verificações: `pytest` 86 ok, `alembic check` sem diferenças, `tsc` e `lint` sem erros. `npm audit`/`pip-audit` não executados (enviariam dados a serviços externos).
+
 ### Ambiente local (fora do git)
 - **Ollama oficial com CUDA instalado** (0.40.16, via `https://ollama.com/install.sh`, revisado antes de rodar). Substitui o pacote do Fedora (0.12.11), que só roda em CPU em GPUs NVIDIA. O serviço em `/etc/systemd/system/ollama.service` tem prioridade sobre o do pacote; modelos continuam em `/var/lib/ollama`. O pacote `ollama` do Fedora ainda está instalado, mas não é usado.
 - **Medido:** `qwen2.5:3b` 100% na RTX 3050 (≈2,1 GB de VRAM), ≈75 tokens/s, carga a frio ≈3 s. Pelo WebSocket, 1º token em ≈0,1 s (antes, em CPU: ≈7,6 s e ≈6 tokens/s).
