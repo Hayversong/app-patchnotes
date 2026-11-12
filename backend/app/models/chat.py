@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utcnow
@@ -16,6 +16,7 @@ class ChatMessage(Base):
         CheckConstraint("role IN ('user', 'assistant')", name="role"),
         CheckConstraint("status IN ('pending', 'complete', 'failed')", name="status"),
         Index("ix_chat_messages_user_created", "user_id", "created_at"),
+        Index("ix_chat_messages_pending_created", "created_at", postgresql_where=text("status = 'pending'")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

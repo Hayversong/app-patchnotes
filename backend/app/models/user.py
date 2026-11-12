@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utcnow
@@ -39,6 +39,8 @@ class RefreshToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     replaced_by_id: Mapped[uuid.UUID | None] = mapped_column()
 
+    __table_args__ = (Index("ix_refresh_tokens_expires_at", "expires_at"),)
+
 
 class PasswordResetToken(Base):
     """Token de uso único (SHA-256 no banco) com validade limitada."""
@@ -51,3 +53,8 @@ class PasswordResetToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_password_reset_tokens_expires_at", "expires_at"),
+        Index("ix_password_reset_tokens_used_at", "used_at", postgresql_where=text("used_at IS NOT NULL")),
+    )
