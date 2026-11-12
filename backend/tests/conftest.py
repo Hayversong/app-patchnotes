@@ -37,6 +37,18 @@ TABLES = ["token_usage", "chat_messages", "devlog_entries", "password_reset_toke
 ORIGIN = "http://localhost:3000"
 
 
+class _IsolatedSettings(Settings):
+    """Settings só com os valores passados: ignora `.env` e variáveis exportadas no shell.
+
+    Sem isso, um `REDIS_URL` exportado (ex.: `set -a; . .env`) fazia os testes usarem o Redis de
+    desenvolvimento no lugar dos limites em memória, falhando e gravando chaves lá.
+    """
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls: Any, init_settings: Any, *_: Any, **__: Any) -> tuple[Any, ...]:
+        return (init_settings,)
+
+
 def make_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "environment": "test",
@@ -49,7 +61,7 @@ def make_settings(**overrides: Any) -> Settings:
         "ollama_model": "modelo-falso",
     }
     values.update(overrides)
-    return Settings(_env_file=None, **values)  # type: ignore[call-arg]
+    return _IsolatedSettings(**values)  # type: ignore[call-arg]
 
 
 @pytest.fixture(scope="session", autouse=True)
