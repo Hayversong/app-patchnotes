@@ -37,7 +37,9 @@ export function AuthShell({
         </motion.div>
         <motion.p initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? 0 : 0.2, delay: reduced ? 0 : 0.24 }} className="mt-5 text-center text-sm text-zinc-400">
           {footer.text}{" "}
-          <Link className="font-medium text-lime-400 hover:text-lime-300" href={footer.href}>
+          {/* Sem isto, o mousedown tira o foco do campo ativo, a validação "onTouched" exibe um erro,
+              o layout desce e o mouseup cai fora do link: o primeiro clique não navegava. */}
+          <Link className="font-medium text-lime-400 hover:text-lime-300" href={footer.href} onMouseDown={(event) => event.preventDefault()}>
             {footer.label}
           </Link>
         </motion.p>

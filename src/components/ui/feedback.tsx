@@ -11,8 +11,8 @@ export function LoadingState({ label }: { label: string }) {
     <div aria-hidden="true" className="space-y-3 motion-safe:animate-pulse"><div className="h-4 w-1/3 rounded bg-zinc-800" /><div className="h-24 rounded-xl bg-zinc-900" /></div>
   </div>;
 }
-export function ErrorState({ message, retry, pending = false }: { message: string; retry: () => void; pending?: boolean }) {
-  return <div className="space-y-3 rounded-xl border border-zinc-800 p-6"><Feedback error>{message}</Feedback><p className="text-sm text-muted-foreground">Verifique sua conexão e tente novamente.</p><Button variant="outline" onClick={retry} loading={pending} loadingText="Tentando novamente...">Tentar novamente</Button></div>;
+export function ErrorState({ message, retry, pending = false, hint = "Verifique sua conexão e tente novamente." }: { message: string; retry: () => void; pending?: boolean; hint?: string }) {
+  return <div className="space-y-3 rounded-xl border border-zinc-800 p-6"><Feedback error>{message}</Feedback><p className="break-words text-sm text-muted-foreground">{hint}</p><Button variant="outline" onClick={retry} loading={pending} loadingText="Tentando novamente...">Tentar novamente</Button></div>;
 }
 export function EmptyState({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center"><h2 className="text-base font-medium">{title}</h2><div className="mt-2 text-sm leading-6 text-muted-foreground">{children}</div></div>;

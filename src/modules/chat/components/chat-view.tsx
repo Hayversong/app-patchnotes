@@ -9,7 +9,7 @@ import { useForm } from "react-hook-form";
 import { TextareaField } from "@/components/form-field";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Feedback } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, Feedback, LoadingState } from "@/components/ui/feedback";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formOptions } from "@/lib/form-options";
@@ -82,8 +82,8 @@ export function ChatView() {
   return <div className="flex min-h-[calc(100dvh-10rem)] min-w-0 flex-col md:min-h-[calc(100dvh-4rem)]">
     <PageHeading eyebrow="Parceiro de criação" title="Assistente" description="Explore ideias e organize o desenvolvimento do seu jogo." />
     <section className="mt-8 flex-1 space-y-5" role="log" aria-label="Conversa com o assistente" aria-relevant="additions text">
-      {chatHistory.isLoading && <EmptyState title="Carregando conversa"><p>Buscando seu histórico de mensagens...</p></EmptyState>}
-      {chatHistory.isError && <Feedback error>Não foi possível carregar o histórico da conversa.</Feedback>}
+      {chatHistory.isLoading && <LoadingState label="Carregando conversa..." />}
+      {chatHistory.isError && <ErrorState message="Não foi possível carregar o histórico da conversa." hint="Você ainda pode enviar novas mensagens. Tente recarregar o histórico." pending={chatHistory.isFetching} retry={() => void chatHistory.refetch()} />}
       {!chatHistory.isLoading && !chatHistory.isError && messages.length === 0 && <EmptyState title="Comece uma conversa"><p>Peça ajuda com uma mecânica, organize decisões ou transforme seu progresso em notas de atualização.</p></EmptyState>}
       {messages.map((message) => <MessageBubble key={message.id} message={message} onTypingComplete={scrollToEnd} />)}
       <AnimatePresence initial={false}>

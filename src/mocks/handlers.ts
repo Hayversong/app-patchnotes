@@ -1,21 +1,73 @@
 import { delay, http, HttpResponse } from "msw";
 import { z } from "zod";
 
-import type { LoginRequest, RegisterRequest, User } from "@/modules/auth/types/auth.types";
-import type { ChatMessage, GetChatHistoryResponse, SendChatRequest } from "@/modules/chat/types/chat.types";
-import type { CreateDevlogRequest, DevlogEntry } from "@/modules/devlog/types/devlog.types";
-import type { Profile, UpdateProfileRequest } from "@/modules/profile/types/profile.types";
+import type { AuthResponse, CurrentUserResponse, LoginRequest, RegisterRequest, User } from "@/modules/auth/types/auth.types";
+import type { ChatMessage, GetChatHistoryResponse, SendChatRequest, SendChatResponse } from "@/modules/chat/types/chat.types";
+import type { ActivityHeatmapResponse, DashboardMetrics, EntriesByTagResponse, TokenUsageResponse } from "@/modules/dashboard/types/dashboard.types";
+import type { CreateDevlogRequest, CreateDevlogResponse, DevlogEntriesResponse, DevlogEntry } from "@/modules/devlog/types/devlog.types";
+import type { Profile, ProfileResponse, UpdateProfileRequest } from "@/modules/profile/types/profile.types";
+import type { ApiErrorResponse } from "@/shared/types/api.types";
+
+import { readScenarioHeader } from "./scenarios";
+
+/**
+ * Handlers MSW — implementação de referência de `docs/API_CONTRACTS.md`.
+ * O padrão `*` casa qualquer origem, então os mesmos handlers servem ao
+ * navegador (setupWorker) e ao Node (setupServer, nos testes).
+ */
+const API = "*/api";
 
 type MockUser = User & { password: string };
 
+const optionalUrl = z.union([z.string().url(), z.literal("")]);
 const LoginBodySchema = z.object({ email: z.string().email(), password: z.string().min(8) });
 const RegisterBodySchema = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8) });
-const DevlogBodySchema = z.object({ title: z.string().min(1), content: z.string().min(1), tags: z.array(z.string()).optional() });
+const DevlogBodySchema = z.object({ title: z.string().min(3), content: z.string().min(10), tags: z.array(z.string().min(1)).optional() });
 const ChatBodySchema = z.object({ message: z.string().min(1).max(2000), context: z.string().optional() });
-const ProfileBodySchema = z.object({ name: z.string().min(2).optional(), bio: z.string().max(240).optional(), avatarUrl: z.union([z.string().url(), z.literal("")]).optional(), githubUrl: z.union([z.string().url(), z.literal("")]).optional() });
+const ProfileBodySchema = z.object({ name: z.string().min(2).optional(), bio: z.string().max(240).optional(), avatarUrl: optionalUrl.optional(), githubUrl: optionalUrl.optional() });
 
-function invalidPayload(details: z.ZodError) {
-  return HttpResponse.json({ error: "Payload inválido", details: details.flatten() }, { status: 400 });
+function errorResponse(status: number, body: ApiErrorResponse): Response {
+  return HttpResponse.json<ApiErrorResponse>(body, { status });
+}
+
+function invalidPayload(error?: z.ZodError): Response {
+  return errorResponse(400, {
+    message: "Dados inválidos. Revise os campos e tente novamente.",
+    details: error ? z.flattenError(error) : { formErrors: ["Payload rejeitado pelo cenário simulado."], fieldErrors: {} },
+  });
+}
+
+function unauthorized(): Response {
+  return errorResponse(401, { message: "Sessão inválida ou expirada. Entre novamente." });
+}
+
+function serverError(): Response {
+  return errorResponse(500, { message: "O servidor encontrou um erro inesperado. Tente novamente em instantes." });
+}
+
+/** Lê o corpo JSON sem lançar exceção: corpo ausente ou malformado vira `undefined` (→ 400). */
+async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Aplica o cenário forçado pelo cabeçalho `X-Mock-Scenario`.
+ * `invalid-payload` só se aplica a mutações; `empty` é tratado em cada handler de leitura.
+ */
+function forcedScenario(request: Request, kind: "query" | "mutation") {
+  const scenario = readScenarioHeader(request);
+  if (scenario === "server-error") return serverError();
+  if (scenario === "unauthorized") return unauthorized();
+  if (scenario === "invalid-payload" && kind === "mutation") return invalidPayload();
+  return undefined;
+}
+
+function wantsEmpty(request: Request) {
+  return readScenarioHeader(request) === "empty";
 }
 
 const users: MockUser[] = [
@@ -62,48 +114,52 @@ function authenticatedUser(request: Request): MockUser | undefined {
   return users.find((user) => user.id === userId);
 }
 
-function unauthorized() {
-  return HttpResponse.json({ message: "Sessão inválida ou expirada" }, { status: 401 });
-}
-
 export const handlers = [
-  http.post("/api/auth/login", async ({ request }) => {
+  http.post(`${API}/auth/login`, async ({ request }) => {
     await delay(500);
-    const parsed = LoginBodySchema.safeParse(await request.json());
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
+    const parsed = LoginBodySchema.safeParse(await readJson(request));
     if (!parsed.success) return invalidPayload(parsed.error);
     const body: LoginRequest = parsed.data;
     const user = users.find((item) => item.email === body.email && item.password === body.password);
-    if (!user) return HttpResponse.json({ message: "E-mail ou senha inválidos" }, { status: 401 });
-    return HttpResponse.json({ user: publicUser(user), token: `mock-token-${user.id}` });
+    if (!user) return errorResponse(401, { message: "E-mail ou senha inválidos" });
+    return HttpResponse.json<AuthResponse>({ user: publicUser(user), token: `mock-token-${user.id}` });
   }),
 
-  http.post("/api/auth/register", async ({ request }) => {
+  http.post(`${API}/auth/register`, async ({ request }) => {
     await delay(600);
-    const parsed = RegisterBodySchema.safeParse(await request.json());
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
+    const parsed = RegisterBodySchema.safeParse(await readJson(request));
     if (!parsed.success) return invalidPayload(parsed.error);
     const body: RegisterRequest = parsed.data;
     if (users.some((item) => item.email === body.email)) {
-      return HttpResponse.json({ message: "Este e-mail já está cadastrado" }, { status: 409 });
+      return errorResponse(409, { message: "Este e-mail já está cadastrado" });
     }
     const user: MockUser = { id: crypto.randomUUID(), ...body };
     users.push(user);
     profiles.set(user.id, publicUser(user));
-    return HttpResponse.json(
-      { user: publicUser(user), token: `mock-token-${user.id}` },
-      { status: 201 },
-    );
+    return HttpResponse.json<AuthResponse>({ user: publicUser(user), token: `mock-token-${user.id}` }, { status: 201 });
   }),
 
-  http.get("/api/auth/me", async ({ request }) => {
+  http.get(`${API}/auth/me`, async ({ request }) => {
     await delay(200);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     const user = authenticatedUser(request);
-    return user ? HttpResponse.json({ user: publicUser(user) }) : unauthorized();
+    return user ? HttpResponse.json<CurrentUserResponse>({ user: publicUser(user) }) : unauthorized();
   }),
 
-  http.get("/api/dashboard/metrics", async ({ request }) => {
+  http.get(`${API}/dashboard/metrics`, async ({ request }) => {
     await delay(350);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
-    return HttpResponse.json({
+    if (wantsEmpty(request)) {
+      return HttpResponse.json<DashboardMetrics>({ totalEntries: 0, tokensUsed: 0, activeTime: "0min", messagesExchanged: 0, streak: 0 });
+    }
+    return HttpResponse.json<DashboardMetrics>({
       totalEntries: entries.length,
       tokensUsed,
       activeTime: "5h 26min",
@@ -112,38 +168,51 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/dashboard/activity-heatmap", async ({ request }) => {
+  http.get(`${API}/dashboard/activity-heatmap`, async ({ request }) => {
     await delay(250);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
+    if (wantsEmpty(request)) return HttpResponse.json<ActivityHeatmapResponse>({ days: [] });
     const today = new Date("2026-09-21T12:00:00Z");
     const counts = [0, 1, 2, 4, 1, 0, 3, 5, 2, 1, 0, 6, 3, 2, 7, 1, 0, 4, 2, 8, 3, 1, 5, 0, 2, 4, 1, 3, 6, 2];
-    return HttpResponse.json({ days: Array.from({ length: 90 }, (_, index) => { const date = new Date(today); date.setUTCDate(today.getUTCDate() - (89 - index)); return { date: date.toISOString().slice(0, 10), count: counts[index % counts.length] }; }) });
+    return HttpResponse.json<ActivityHeatmapResponse>({ days: Array.from({ length: 90 }, (_, index) => { const date = new Date(today); date.setUTCDate(today.getUTCDate() - (89 - index)); return { date: date.toISOString().slice(0, 10), count: counts[index % counts.length] }; }) });
   }),
 
-  http.get("/api/dashboard/token-usage", async ({ request }) => {
+  http.get(`${API}/dashboard/token-usage`, async ({ request }) => {
     await delay(250);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
+    if (wantsEmpty(request)) return HttpResponse.json<TokenUsageResponse>({ points: [] });
     const period = new URL(request.url).searchParams.get("period") === "30d" ? 30 : 7;
     const base = [820, 1460, 980, 2130, 1740, 2680, 1940, 2310, 1280, 1860];
-    return HttpResponse.json({ points: Array.from({ length: period }, (_, index) => { const date = new Date("2026-09-21T12:00:00Z"); date.setUTCDate(date.getUTCDate() - (period - 1 - index)); return { date: date.toISOString().slice(0, 10), tokens: base[index % base.length] + (index * 73) % 500 }; }) });
+    return HttpResponse.json<TokenUsageResponse>({ points: Array.from({ length: period }, (_, index) => { const date = new Date("2026-09-21T12:00:00Z"); date.setUTCDate(date.getUTCDate() - (period - 1 - index)); return { date: date.toISOString().slice(0, 10), tokens: base[index % base.length] + (index * 73) % 500 }; }) });
   }),
 
-  http.get("/api/dashboard/entries-by-tag", async ({ request }) => {
+  http.get(`${API}/dashboard/entries-by-tag`, async ({ request }) => {
     await delay(250);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
-    return HttpResponse.json({ tags: [{ tag: "gameplay", count: 18 }, { tag: "combate", count: 14 }, { tag: "física", count: 11 }, { tag: "player", count: 8 }, { tag: "UI", count: 6 }, { tag: "áudio", count: 3 }] });
+    if (wantsEmpty(request)) return HttpResponse.json<EntriesByTagResponse>({ tags: [] });
+    return HttpResponse.json<EntriesByTagResponse>({ tags: [{ tag: "gameplay", count: 18 }, { tag: "combate", count: 14 }, { tag: "física", count: 11 }, { tag: "player", count: 8 }, { tag: "UI", count: 6 }, { tag: "áudio", count: 3 }] });
   }),
 
-  http.get("/api/devlog/entries", async ({ request }) => {
+  http.get(`${API}/devlog/entries`, async ({ request }) => {
     await delay(350);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
-    return HttpResponse.json({ entries });
+    return HttpResponse.json<DevlogEntriesResponse>({ entries: wantsEmpty(request) ? [] : entries });
   }),
 
-  http.post("/api/devlog/entries", async ({ request }) => {
+  http.post(`${API}/devlog/entries`, async ({ request }) => {
     await delay(500);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
-    const parsed = DevlogBodySchema.safeParse(await request.json());
+    const parsed = DevlogBodySchema.safeParse(await readJson(request));
     if (!parsed.success) return invalidPayload(parsed.error);
     const body: CreateDevlogRequest = parsed.data;
     const entry: DevlogEntry = {
@@ -154,13 +223,15 @@ export const handlers = [
       createdAt: new Date().toISOString(),
     };
     entries = [entry, ...entries];
-    return HttpResponse.json({ entry }, { status: 201 });
+    return HttpResponse.json<CreateDevlogResponse>({ entry }, { status: 201 });
   }),
 
-  http.post("/api/chat/send", async ({ request }) => {
+  http.post(`${API}/chat/send`, async ({ request }) => {
     await delay(900);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
-    const parsed = ChatBodySchema.safeParse(await request.json());
+    const parsed = ChatBodySchema.safeParse(await readJson(request));
     if (!parsed.success) return invalidPayload(parsed.error);
     const body: SendChatRequest = parsed.data;
     const responseTokens = Math.max(24, Math.ceil(body.message.length * 1.8));
@@ -171,41 +242,50 @@ export const handlers = [
       content: body.message,
       createdAt: new Date().toISOString(),
     };
-    const assistantMessage: ChatMessage = {
+    const assistantMessage: SendChatResponse = {
       id: crypto.randomUUID(),
-      role: "assistant" as const,
+      role: "assistant",
       content: `Vamos desenvolver essa ideia: ${body.message}. Comece definindo a experiência principal do jogador, depois liste as regras e crie um protótipo pequeno para validar a mecânica.`,
       createdAt: new Date().toISOString(),
       tokensUsed: responseTokens,
     };
     messageStore.push(userMessage, assistantMessage);
-    return HttpResponse.json(assistantMessage);
+    return HttpResponse.json<SendChatResponse>(assistantMessage);
   }),
 
-  http.get("/api/chat/history", ({ request }) => {
+  http.get(`${API}/chat/history`, async ({ request }) => {
+    await delay(250);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     if (!authenticatedUser(request)) return unauthorized();
-    return HttpResponse.json<GetChatHistoryResponse>({ messages: messageStore });
+    return HttpResponse.json<GetChatHistoryResponse>({ messages: wantsEmpty(request) ? [] : messageStore });
   }),
 
-  http.get("/api/profile", async ({ request }) => {
+  http.get(`${API}/profile`, async ({ request }) => {
     await delay(300);
+    const forced = forcedScenario(request, "query");
+    if (forced) return forced;
     const authUser = authenticatedUser(request);
     if (!authUser) return unauthorized();
-    return HttpResponse.json({ user: profiles.get(authUser.id) ?? publicUser(authUser) });
+    // "Vazio" para perfil = apenas os campos obrigatórios, sem bio, avatar ou GitHub.
+    const user = wantsEmpty(request) ? { id: authUser.id, name: authUser.name, email: authUser.email } : profiles.get(authUser.id) ?? publicUser(authUser);
+    return HttpResponse.json<ProfileResponse>({ user });
   }),
 
-  http.patch("/api/profile", async ({ request }) => {
+  http.patch(`${API}/profile`, async ({ request }) => {
     await delay(500);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
     const authUser = authenticatedUser(request);
     if (!authUser) return unauthorized();
-    const parsed = ProfileBodySchema.safeParse(await request.json());
+    const parsed = ProfileBodySchema.safeParse(await readJson(request));
     if (!parsed.success) return invalidPayload(parsed.error);
     const body: UpdateProfileRequest = parsed.data;
     const currentProfile = profiles.get(authUser.id) ?? publicUser(authUser);
-    const updatedProfile = { ...currentProfile, ...body };
+    const updatedProfile: Profile = { ...currentProfile, ...body };
     profiles.set(authUser.id, updatedProfile);
     authUser.name = updatedProfile.name;
     authUser.avatarUrl = updatedProfile.avatarUrl;
-    return HttpResponse.json({ user: updatedProfile });
+    return HttpResponse.json<ProfileResponse>({ user: updatedProfile });
   }),
 ];
