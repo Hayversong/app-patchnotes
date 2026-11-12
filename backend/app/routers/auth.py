@@ -16,7 +16,6 @@ from app.schemas.auth import (
     UserOut,
 )
 from app.services import auth_service
-from app.services.email_service import send_safely
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -112,17 +111,14 @@ async def logout(request: Request, session: SessionDep, settings: SettingsDep) -
 
 @router.post("/forgot-password", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED,
              dependencies=[Depends(limit_by_ip("forgot", limit=5, window_seconds=900))])
-async def forgot_password(body: ForgotPasswordRequest, request: Request, background: BackgroundTasks, session: SessionDep, settings: SettingsDep) -> MessageResponse:
+async def forgot_password(body: ForgotPasswordRequest, request: Request, background: BackgroundTasks, settings: SettingsDep) -> MessageResponse:
     # Por (e-mail, IP) e um teto por e-mail: impede inundar a caixa da vítima sem deixar um terceiro esgotar a cota dela.
     email = identifier_key(body.email)
     await enforce(request, "forgot-email-ip", f"{email}:{client_ip(request)}", limit=3, window_seconds=900)
     await enforce(request, "forgot-email", email, limit=10, window_seconds=3600)
-    result = await auth_service.request_password_reset(session, settings, body.email)
-    if result is not None:
-        user, raw_token = result
-        # Enviado depois da resposta: o tempo de resposta não revela se o e-mail existe.
-        background.add_task(send_safely, request.app.state.mailer, to=user.email, subject="Redefinição de senha — Patchnotes",
-                            body=auth_service.reset_email_body(settings, user.name, raw_token))
+    # Tudo (consulta, token e e-mail) roda depois da resposta, exista ou não a conta: mesma resposta, mesmo tempo.
+    background.add_task(auth_service.process_password_reset_request, request.app.state.sessionmaker,
+                        request.app.state.mailer, settings, body.email)
     return MessageResponse(message=FORGOT_PASSWORD_MESSAGE)
 
 

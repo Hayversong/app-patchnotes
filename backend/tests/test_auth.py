@@ -226,3 +226,56 @@ def test_unexpected_error_hides_internals(harness: Harness, user: dict, monkeypa
     assert response.status_code == 500
     assert response.json() == {"message": "O servidor encontrou um erro inesperado. Tente novamente em instantes."}
 
+
+
+def test_forgot_password_does_no_database_work_before_responding(harness: Harness, user: dict) -> None:
+    """S7: a consulta e a escrita do token acontecem só depois da resposta, para o tempo não revelar a conta."""
+    from app.services import auth_service
+
+    calls: list[str] = []
+    original = auth_service.request_password_reset
+
+    async def spy(session, settings, email):  # type: ignore[no-untyped-def]
+        calls.append(email)
+        return await original(session, settings, email)
+
+    auth_service.request_password_reset = spy  # type: ignore[assignment]
+    try:
+        captured: list[object] = []
+        original_add = __import__("starlette.background", fromlist=["BackgroundTasks"]).BackgroundTasks.add_task
+
+        def capture(self, func, *args, **kwargs):  # type: ignore[no-untyped-def]
+            captured.append(func)
+            return original_add(self, func, *args, **kwargs)
+
+        import starlette.background as background
+
+        background.BackgroundTasks.add_task = capture  # type: ignore[method-assign]
+        try:
+            for email in ("pessoa@patchnotes.dev", "ninguem@patchnotes.dev"):
+                response = harness.client.post("/api/auth/forgot-password", json={"email": email})
+                assert response.status_code == 202
+        finally:
+            background.BackgroundTasks.add_task = original_add  # type: ignore[method-assign]
+        assert captured == [auth_service.process_password_reset_request] * 2, "as duas contas seguem o mesmo caminho"
+        assert calls == ["pessoa@patchnotes.dev", "ninguem@patchnotes.dev"]
+        assert len(harness.mailer.sent) == 1 and harness.mailer.sent[0]["to"] == "pessoa@patchnotes.dev"
+    finally:
+        auth_service.request_password_reset = original  # type: ignore[assignment]
+
+
+def test_forgot_password_background_failure_is_logged_without_email(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
+    from app.services import auth_service
+
+    async def broken(session, settings, email):  # type: ignore[no-untyped-def]
+        raise RuntimeError("banco fora do ar")
+
+    original = auth_service.request_password_reset
+    auth_service.request_password_reset = broken  # type: ignore[assignment]
+    try:
+        response = harness.client.post("/api/auth/forgot-password", json={"email": "segredo@patchnotes.dev"})
+    finally:
+        auth_service.request_password_reset = original  # type: ignore[assignment]
+    assert response.status_code == 202
+    assert "Falha ao preparar a redefinição de senha: RuntimeError" in caplog.text
+    assert "segredo@patchnotes.dev" not in caplog.text

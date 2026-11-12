@@ -1,9 +1,10 @@
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
@@ -21,10 +22,14 @@ from app.core.security import (
 from app.models import User
 from app.repositories import tokens as token_repo
 from app.repositories import users as user_repo
+from app.services.email_service import Mailer, send_safely
 
 INVALID_CREDENTIALS = "E-mail ou senha inválidos"
 EMAIL_TAKEN = "Este e-mail já está cadastrado"
 INVALID_RESET_TOKEN = "Link de redefinição inválido ou expirado. Solicite um novo."
+RESET_EMAIL_SUBJECT = "Redefinição de senha — Patchnotes"
+
+logger = logging.getLogger("patchnotes.auth")
 
 
 @dataclass(frozen=True)
@@ -146,6 +151,24 @@ async def reset_password(session: AsyncSession, *, token: str, password: str) ->
     # Encerra todas as sessões: refresh tokens revogados e access tokens anteriores recusados.
     await user_repo.set_password(session, user_id, password_hash)
     await token_repo.revoke_all_for_user(session, user_id, now)
+
+
+async def process_password_reset_request(
+    sessionmaker: async_sessionmaker[AsyncSession], mailer: Mailer, settings: Settings, email: str
+) -> None:
+    """Executada DEPOIS da resposta 202: consulta, escrita e e-mail não influenciam o tempo de resposta,
+    então ele não revela se a conta existe. Transação curta; o e-mail sai fora dela. Falhas só vão para o log
+    (sem e-mail, token ou corpo)."""
+    try:
+        async with sessionmaker() as session, session.begin():
+            result = await request_password_reset(session, settings, email)
+    except Exception as error:  # noqa: BLE001 — tarefa de fundo não pode derrubar o servidor
+        logger.error("Falha ao preparar a redefinição de senha: %s", type(error).__name__)
+        return
+    if result is None:
+        return
+    user, raw_token = result
+    await send_safely(mailer, to=user.email, subject=RESET_EMAIL_SUBJECT, body=reset_email_body(settings, user.name, raw_token))
 
 
 def reset_email_body(settings: Settings, name: str, raw_token: str) -> str:
