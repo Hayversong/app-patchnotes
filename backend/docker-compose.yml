@@ -1,0 +1,43 @@
+name: patchnotes
+
+# Serviços de desenvolvimento. Todas as portas ficam presas a 127.0.0.1 (não expostas na rede).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-patchnotes}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-patchnotes_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-patchnotes}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Caixa de e-mail local para desenvolvimento (SMTP em 1025, interface web em 8025).
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+  # Estado compartilhado entre réplicas da API: limites de requisição e de conexões WebSocket.
+  # Sem persistência em disco (os dados são efêmeros por natureza) e sem porta exposta além de 127.0.0.1.
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-ttl"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

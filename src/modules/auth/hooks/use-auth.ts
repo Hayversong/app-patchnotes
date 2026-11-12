@@ -1,21 +1,32 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 
-import { getCurrentUser, login, register } from "@/modules/auth/services/auth.service";
+import { forgotPassword, getCurrentUser, login, logout, register, resetPassword } from "@/modules/auth/services/auth.service";
 import { useAuthStore } from "@/store/authStore";
 
-export function useLoginMutation() {
+/** Ao entrar, descarta dados em cache de uma sessão anterior (outra conta no mesmo navegador). */
+function useStartSession() {
+  const queryClient = useQueryClient();
   const setSession = useAuthStore((state) => state.setSession);
+  return useCallback((user: Parameters<typeof setSession>[0], token: string) => {
+    queryClient.clear();
+    setSession(user, token);
+  }, [queryClient, setSession]);
+}
+
+export function useLoginMutation() {
+  const startSession = useStartSession();
   return useMutation({
     mutationFn: login,
-    onSuccess: ({ user, token }) => setSession(user, token),
+    onSuccess: ({ user, token }) => startSession(user, token),
   });
 }
 
 export function useRegisterMutation() {
-  const setSession = useAuthStore((state) => state.setSession);
+  const startSession = useStartSession();
   return useMutation({
     mutationFn: register,
-    onSuccess: ({ user, token }) => setSession(user, token),
+    onSuccess: ({ user, token }) => startSession(user, token),
   });
 }
 
@@ -28,4 +39,21 @@ export function useCurrentUserQuery() {
     select: (data) => data.user,
     staleTime: 60_000,
   });
+}
+
+/** Sai na hora e revoga a sessão no servidor em segundo plano (falha de rede não impede sair). */
+export function useLogout() {
+  const clearSession = useAuthStore((state) => state.clearSession);
+  return useCallback(() => {
+    void logout().catch(() => undefined);
+    clearSession();
+  }, [clearSession]);
+}
+
+export function useForgotPasswordMutation() {
+  return useMutation({ mutationFn: forgotPassword });
+}
+
+export function useResetPasswordMutation() {
+  return useMutation({ mutationFn: resetPassword });
 }

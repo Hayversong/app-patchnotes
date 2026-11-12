@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { setupServer } from "msw/node";
 
-import { handlers } from "@/mocks/handlers";
+import { MOCK_RESET_TOKEN, handlers } from "@/mocks/handlers";
 import { MOCK_SCENARIO_HEADER, domainFromUrl, parseScenarioParam, scenarioFor, type MockScenario } from "@/mocks/scenarios";
 
 const BASE = "http://localhost/api";
@@ -40,6 +40,8 @@ const mutations: Call[] = [
   { method: "POST", path: "/devlog/entries", body: { title: "Título válido", content: "Conteúdo com mais de dez caracteres", tags: ["ui"] } },
   { method: "POST", path: "/chat/send", body: { message: "Como melhorar o combate?" } },
   { method: "PATCH", path: "/profile", body: { bio: "Bio atualizada" } },
+  { method: "POST", path: "/auth/forgot-password", body: { email: "hayverson@patchnotes.dev" }, authed: false },
+  { method: "POST", path: "/auth/reset-password", body: { token: "token-qualquer-com-mais-de-20", password: "nova-senha-123" }, authed: false },
 ];
 
 const protectedCalls = [...queries, ...mutations.filter((item) => item.authed !== false)];
@@ -220,5 +222,38 @@ describe("seleção de cenário no cliente", () => {
     assert.equal(scenarioFor(map, "/chat/history"), "server-error");
     assert.equal(scenarioFor(map, "/devlog/entries"), "empty");
     assert.equal(scenarioFor({}, "/devlog/entries"), "success");
+  });
+});
+
+describe("refresh, logout e recuperação de senha", () => {
+  test("refresh não existe no mock: sempre 401 (a sessão expira como antes)", async () => {
+    const response = await call({ method: "POST", path: "/auth/refresh", authed: false });
+    assert.equal(response.status, 401);
+    assert.equal(typeof (await response.json()).message, "string");
+  });
+
+  test("logout responde 204", async () => {
+    assert.equal((await call({ method: "POST", path: "/auth/logout", authed: false })).status, 204);
+  });
+
+  test("forgot-password responde igual para conta existente e inexistente", async () => {
+    const known = await call({ method: "POST", path: "/auth/forgot-password", body: { email: "hayverson@patchnotes.dev" }, authed: false });
+    const unknown = await call({ method: "POST", path: "/auth/forgot-password", body: { email: "ninguem@patchnotes.dev" }, authed: false });
+    assert.equal(known.status, 202);
+    assert.equal(unknown.status, 202);
+    assert.deepEqual(await known.json(), await unknown.json());
+    assert.equal((await call({ method: "POST", path: "/auth/forgot-password", body: { email: "invalido" }, authed: false })).status, 400);
+  });
+
+  test("reset-password: token inválido 400, válido 204 e a nova senha passa a valer", async () => {
+    const invalid = await call({ method: "POST", path: "/auth/reset-password", body: { token: "token-errado-com-mais-de-vinte", password: "nova-senha-123" }, authed: false });
+    assert.equal(invalid.status, 400);
+    assert.match((await invalid.json()).message, /inválido ou expirado/);
+    const ok = await call({ method: "POST", path: "/auth/reset-password", body: { token: MOCK_RESET_TOKEN, password: "nova-senha-123" }, authed: false });
+    assert.equal(ok.status, 204);
+    const login = await call({ method: "POST", path: "/auth/login", body: { email: validLogin.email, password: "nova-senha-123" }, authed: false });
+    assert.equal(login.status, 200);
+    // devolve a senha original para não afetar outros testes
+    await call({ method: "POST", path: "/auth/reset-password", body: { token: MOCK_RESET_TOKEN, password: validLogin.password }, authed: false });
   });
 });

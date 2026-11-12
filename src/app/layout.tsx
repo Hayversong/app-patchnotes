@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { headers } from "next/headers";
 import "./globals.css";
 import { AppProviders } from "@/providers/app-providers";
 
@@ -24,6 +25,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Ler os cabeçalhos torna a renderização dinâmica: cada resposta recebe o nonce novo da CSP (middleware.ts).
+  // Páginas pré-renderizadas no build teriam scripts sem nonce, bloqueados pela política.
+  headers();
   return (
     <html lang="pt-BR" className="dark">
       <body

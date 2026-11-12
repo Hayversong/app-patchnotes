@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Feedback } from "@/components/ui/feedback";
 import { formOptions } from "@/lib/form-options";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -41,6 +42,7 @@ export function LoginForm() {
       <fieldset className="min-w-0 space-y-5" disabled={loginMutation.isPending}>
       <AuthItem><AnimatedInput id="email" autoFocus label="E-mail" type="email" autoComplete="email" placeholder="voce@exemplo.com" error={touchedFields.email || isSubmitted ? errors.email?.message : undefined} success={Boolean(touchedFields.email && !errors.email)} {...register("email")} /></AuthItem>
       <AuthItem><AnimatedInput id="password" label="Senha" type="password" autoComplete="current-password" error={touchedFields.password || isSubmitted ? errors.password?.message : undefined} success={Boolean(touchedFields.password && !errors.password)} {...register("password")} /></AuthItem>
+      <AuthItem><div className="-mt-3 flex justify-end"><Link href="/forgot-password" onMouseDown={(event) => event.preventDefault()} className="text-sm text-zinc-400 underline-offset-4 hover:text-lime-300 hover:underline">Esqueci minha senha</Link></div></AuthItem>
       {serverError ? <AuthItem><Feedback error>{serverError}</Feedback></AuthItem> : sessionExpired ? <AuthItem><Feedback error>Sua sessão expirou. Entre novamente para continuar.</Feedback></AuthItem> : null}
       <AuthItem><Button type="submit" className="w-full motion-safe:hover:scale-[1.01]" loading={loginMutation.isPending} loadingText="Entrando...">Entrar</Button></AuthItem>
     </fieldset>
