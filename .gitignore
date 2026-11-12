@@ -10,6 +10,7 @@ checkpoint.md
 !README.md
 # Contratos da API: fonte única entre frontend e backend, versionada.
 !/docs/API_CONTRACTS.md
+!/docs/CHANGELOG.md
 !**/LICENSE.md
 !**/LICENCE.md
 
