@@ -13,10 +13,10 @@ Configuração de segurança em vigor e status dos achados da [revisão de 12/11
 | Várias réplicas | implementado | limites e vagas de WebSocket no Redis (scripts Lua atômicos); `REDIS_URL` obrigatório em production; falha fechada (503) | `6424da7`, `1b169cf` |
 | **S3** — WebSocket sem limites | corrigido | vagas por IP e por conta com heartbeat, inatividade (4408), expiração do token (4401) | `1b169cf` |
 | **S4** (pedido) — limpeza síncrona de registros | corrigido | não havia limpeza; criada rotina em lote fora da requisição, com índices e advisory lock | `02e3d24` |
-| **S7** — enumeração de e-mail | corrigido em parte | `forgot-password` faz todo o trabalho depois da resposta. Login já era uniforme. **O 409 do cadastro continua** (exigido pelo contrato da Parte 1) | `072768f` |
+| **S7** — enumeração de e-mail | corrigido em parte; **risco aceito** | `forgot-password` faz todo o trabalho depois da resposta. Login já era uniforme. O 409 do cadastro continua por decisão (12/11/2026) | `072768f` |
 | **S8** (revisão) — devlog/perfil sem limites e paginação | corrigido | paginação por cursor compatível; 30 criações/min de devlog e 20 edições/min de perfil por usuário | `5956455` |
 | **S6** — sem CSP | corrigido | CSP com nonce por requisição e cabeçalhos de segurança | `a4488ec` |
-| **S5** — access token legível por JavaScript | **parcial; depende de decisão** | `Secure` no cookie em HTTPS e CSP estrita reduzem o risco; mover o token para cookie `HttpOnly` exige mudar frontend e contrato (ver abaixo) | `a4488ec` |
+| **S5** — access token legível por JavaScript | parcial; **risco aceito** | `Secure` no cookie em HTTPS e CSP estrita reduzem o risco. O token continua legível por JavaScript por decisão (12/11/2026) | `a4488ec` |
 | Middleware do Next nunca executava | corrigido (achado novo) | `middleware.ts` estava na raiz; com `src/`, o Next só lê `src/middleware.ts` | `a4488ec` |
 
 ## Content Security Policy (frontend)
@@ -58,12 +58,13 @@ Outros cabeçalhos (`next.config.mjs`): `X-Content-Type-Options: nosniff`, `X-Fr
 
 `python -m app.scripts.cleanup`, agendado (ex.: a cada hora): exclusões em lote fora do caminho das requisições, seguro em várias réplicas. Exemplo de timer em `backend/README.md`.
 
-## Decisões pendentes
+## Decisões registradas (12/11/2026)
 
-1. **S5 — access token em cookie `HttpOnly`.** Hoje o token fica em `patchnotes_token` (legível por JS), porque o Axios o envia em `Authorization` e o WebSocket o manda na primeira mensagem. Para movê-lo para um cookie `HttpOnly`:
-   - o backend passaria a aceitar o cookie (com proteção CSRF, porque cookies vão automaticamente);
-   - o Axios deixaria de ler o token, e o WebSocket precisaria de outra forma de autenticar (cookie no handshake, que exige o mesmo site da API);
-   - o corpo de `login`/`register`/`refresh` deixaria de precisar do `token`.
+1. **S5 — o access token continua legível por JavaScript.** Ele fica em `patchnotes_token`, porque o Axios o envia em `Authorization` e o WebSocket o manda na primeira mensagem. Mover para um cookie `HttpOnly` mudaria o contrato de `login`/`register`/`refresh`, o Axios, a autenticação do WebSocket e exigiria proteção CSRF; ficou decidido manter o estado atual.
+   - Mitigações em vigor: CSP com nonce sem `'unsafe-inline'`/`'unsafe-eval'` em scripts, `Secure` em HTTPS, `SameSite=Strict`, access token de 15 min e refresh token em cookie `HttpOnly`.
+   - Risco residual: um XSS que passe pela CSP pode ler o token e usá-lo até expirar.
+2. **Cadastro mantém o 409.** `POST /auth/register` responde 409 para e-mail existente, como manda o contrato da Parte 1. Ficou decidido manter o fluxo atual.
+   - Mitigação em vigor: limite por IP no cadastro.
+   - Risco residual: é possível descobrir se um e-mail tem conta, em ritmo limitado.
 
-   É uma mudança de contrato e de frontend.
-2. **Enumeração no cadastro.** `POST /auth/register` responde 409 para e-mail existente, como manda o contrato da Parte 1. Para eliminar isso, o cadastro teria que responder igual nos dois casos e confirmar por e-mail, o que muda o fluxo visível.
+Reabrir essas decisões exige mudança de contrato e de frontend.

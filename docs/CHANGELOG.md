@@ -4,6 +4,11 @@ Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada ite
 
 ## 12/11/2026
 
+### Decisões de segurança registradas
+- **S5:** o access token continua legível por JavaScript; não haverá migração para cookie `HttpOnly`.
+- **Cadastro:** o 409 para e-mail existente continua, conforme o contrato da Parte 1.
+- Os dois riscos foram aceitos e documentados em `docs/SEGURANCA.md` (mitigações em vigor e risco residual). Sem mudança de código.
+
 ### Correções da revisão de segurança (`d446ece` … `a4488ec`)
 Status completo em `docs/SEGURANCA.md`.
 - `d446ece` **S1:** `PATCH /profile` não desfaz mais uma redefinição de senha concorrente.
