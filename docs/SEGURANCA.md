@@ -6,18 +6,18 @@ Configuração de segurança em vigor e status dos achados da [revisão de 12/11
 
 | Achado | Status | Correção | Commit |
 |---|---|---|---|
-| **S1** Alta — `PATCH /profile` desfazia redefinição de senha concorrente | corrigido | `UPDATE … RETURNING` só das colunas de perfil; teste injeta a redefinição entre autenticação e gravação | `d446ece` |
-| **S8** — janela de 1 s em `tokens_valid_after` | corrigido | versão de sessão inteira no JWT (`sv`), incrementada atomicamente na redefinição; migration 0002 | `502c8a8` |
-| **S2** — IP do cliente atrás do proxy | corrigido | `TRUSTED_PROXIES` + leitura do `X-Forwarded-For` da direita para a esquerda; `python -m app` desliga o `proxy_headers` do uvicorn; falhas de login por (e-mail, IP) | `6424da7` |
-| **S4** (revisão) — limpeza do rate limiter apagava limites longos | corrigido | janela guardada por balde, limpeza incremental; Redis com TTL por chave | `6424da7` |
-| Várias réplicas | implementado | limites e vagas de WebSocket no Redis (scripts Lua atômicos); `REDIS_URL` obrigatório em production; falha fechada (503) | `6424da7`, `1b169cf` |
-| **S3** — WebSocket sem limites | corrigido | vagas por IP e por conta com heartbeat, inatividade (4408), expiração do token (4401) | `1b169cf` |
-| **S4** (pedido) — limpeza síncrona de registros | corrigido | não havia limpeza; criada rotina em lote fora da requisição, com índices e advisory lock | `02e3d24` |
-| **S7** — enumeração de e-mail | corrigido em parte; **risco aceito** | `forgot-password` faz todo o trabalho depois da resposta. Login já era uniforme. O 409 do cadastro continua por decisão (12/11/2026) | `072768f` |
-| **S8** (revisão) — devlog/perfil sem limites e paginação | corrigido | paginação por cursor compatível; 30 criações/min de devlog e 20 edições/min de perfil por usuário | `5956455` |
-| **S6** — sem CSP | corrigido | CSP com nonce por requisição e cabeçalhos de segurança | `a4488ec` |
-| **S5** — access token legível por JavaScript | parcial; **risco aceito** | `Secure` no cookie em HTTPS e CSP estrita reduzem o risco. O token continua legível por JavaScript por decisão (12/11/2026) | `a4488ec` |
-| Middleware do Next nunca executava | corrigido (achado novo) | `middleware.ts` estava na raiz; com `src/`, o Next só lê `src/middleware.ts` | `a4488ec` |
+| **S1** Alta — `PATCH /profile` desfazia redefinição de senha concorrente | corrigido | `UPDATE … RETURNING` só das colunas de perfil; teste injeta a redefinição entre autenticação e gravação | `b4f7c8a` |
+| **S8** — janela de 1 s em `tokens_valid_after` | corrigido | versão de sessão inteira no JWT (`sv`), incrementada atomicamente na redefinição; migration 0002 | `92e1a7d` |
+| **S2** — IP do cliente atrás do proxy | corrigido | `TRUSTED_PROXIES` + leitura do `X-Forwarded-For` da direita para a esquerda; `python -m app` desliga o `proxy_headers` do uvicorn; falhas de login por (e-mail, IP) | `80d04cc` |
+| **S4** (revisão) — limpeza do rate limiter apagava limites longos | corrigido | janela guardada por balde, limpeza incremental; Redis com TTL por chave | `80d04cc` |
+| Várias réplicas | implementado | limites e vagas de WebSocket no Redis (scripts Lua atômicos); `REDIS_URL` obrigatório em production; falha fechada (503) | `80d04cc`, `5d2dc5e` |
+| **S3** — WebSocket sem limites | corrigido | vagas por IP e por conta com heartbeat, inatividade (4408), expiração do token (4401) | `5d2dc5e` |
+| **S4** (pedido) — limpeza síncrona de registros | corrigido | não havia limpeza; criada rotina em lote fora da requisição, com índices e advisory lock | `ae4bf6c` |
+| **S7** — enumeração de e-mail | corrigido em parte; **risco aceito** | `forgot-password` faz todo o trabalho depois da resposta. Login já era uniforme. O 409 do cadastro continua por decisão (12/11/2026) | `e824a85` |
+| **S8** (revisão) — devlog/perfil sem limites e paginação | corrigido | paginação por cursor compatível; 30 criações/min de devlog e 20 edições/min de perfil por usuário | `a4e6bbe` |
+| **S6** — sem CSP | corrigido | CSP com nonce por requisição e cabeçalhos de segurança | `7a2dafe` |
+| **S5** — access token legível por JavaScript | parcial; **risco aceito** | `Secure` no cookie em HTTPS e CSP estrita reduzem o risco. O token continua legível por JavaScript por decisão (12/11/2026) | `7a2dafe` |
+| Middleware do Next nunca executava | corrigido (achado novo) | `middleware.ts` estava na raiz; com `src/`, o Next só lê `src/middleware.ts` | `7a2dafe` |
 
 ## Content Security Policy (frontend)
 

@@ -1,6 +1,6 @@
 # Revisão de arquitetura e segurança — Patchnotes
 
-Data: 12/11/2026 · Branch: `implementando-backend` (HEAD `b486afa`, working tree limpo no início da revisão) · Escopo: revisão estática do código atual, com verificações automatizadas locais. Nenhum arquivo de código foi alterado.
+Data: 12/11/2026 · Branch: `implementando-backend` (HEAD `737728a`, working tree limpo no início da revisão) · Escopo: revisão estática do código atual, com verificações automatizadas locais. Nenhum arquivo de código foi alterado.
 
 **Skills usadas:** não há skill chamada "System Design" no ambiente. Para arquitetura usei a mais próxima, `backend-patterns` (camadas, repositórios, transações, rate limiting, logs); para segurança, `security-review` (segredos, validação, injeção, autenticação, XSS, CSRF, rate limiting, exposição de dados, dependências).
 
@@ -222,7 +222,7 @@ Os testes do backend conferem esses formatos, e os 45 testes de contrato do MSW 
 | Limites extras de validação (nome ≤ 100, senha ≤ 128, devlog, URLs só http(s), `context` ≤ 4.000) | Mais restritivo que o MSW | Não, se o frontend respeitar; um texto válido no MSW e maior que o limite do backend gera 400 |
 | Status 403, 413, 429, 503, 504 | Novos códigos | Já documentados; a UI mostra `message` |
 | `tokensUsed` também nas mensagens do usuário | Campo já opcional | Não |
-| `POST /auth/refresh`, `/auth/logout`, `/auth/forgot-password`, `/auth/reset-password` | Endpoints novos | Já aprovados; o frontend os usa (commit `81ca418`) |
+| `POST /auth/refresh`, `/auth/logout`, `/auth/forgot-password`, `/auth/reset-password` | Endpoints novos | Já aprovados; o frontend os usa (commit `1a93297`) |
 | `GET /dashboard/token-balance` | Endpoint novo | Já aprovado; **o frontend ainda não exibe o saldo** (não há tipo nem serviço em `src/modules/dashboard`) |
 | WebSocket `/ws/chat` | Protocolo novo, fora de `/api` | Já aprovado; opcional via `NEXT_PUBLIC_CHAT_WS_URL`; o REST continua funcionando |
 | Histórico de consumo | Atendido pelo `token-usage` da Parte 1 | Não |
@@ -236,7 +236,7 @@ Os testes do backend conferem esses formatos, e os 45 testes de contrato do MSW 
 
 | Comando / ferramenta | Resultado |
 |---|---|
-| `git status`, `git log` | Working tree limpo; HEAD `b486afa` |
+| `git status`, `git log` | Working tree limpo; HEAD `737728a` |
 | `docker compose ps` | `postgres` e `mailpit` rodando (127.0.0.1) |
 | `.venv/bin/python -m pytest -q` (backend) | **86 passaram**, 1 aviso de depreciação (`httpx` no `TestClient`) |
 | `.venv/bin/alembic check` | "No new upgrade operations detected" |
