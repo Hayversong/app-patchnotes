@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.middleware import BodySizeLimitMiddleware
+from app.core.connection_limits import MemoryConnectionSlots, RedisConnectionSlots
 from app.core.rate_limit import MemoryRateLimiter, RateLimiter, RedisRateLimiter
 from app.db.session import create_engine, create_sessionmaker
 from app.routers import auth, chat, dashboard, devlog, profile, ws_chat
@@ -37,6 +38,7 @@ def create_app(
         redis = Redis.from_url(settings.redis_url, socket_timeout=2, socket_connect_timeout=2) if settings.redis_url else None
         app.state.redis = redis
         app.state.rate_limiter = rate_limiter or (RedisRateLimiter(redis) if redis else MemoryRateLimiter())
+        app.state.connection_slots = RedisConnectionSlots(redis) if redis else MemoryConnectionSlots()
         try:
             yield
         finally:

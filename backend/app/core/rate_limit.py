@@ -19,6 +19,7 @@ from typing import Protocol
 
 from fastapi import Request
 from redis.asyncio import Redis
+from starlette.requests import HTTPConnection
 from redis.exceptions import RedisError
 
 from app.core.errors import ApiError
@@ -194,11 +195,12 @@ def resolve_client_ip(peer: str | None, forwarded_for: list[str], trusted_proxie
     return peer
 
 
-def client_ip(request: Request) -> str:
-    settings = request.app.state.settings
+def client_ip(connection: HTTPConnection) -> str:
+    """IP do cliente de uma requisição HTTP ou conexão WebSocket."""
+    settings = connection.app.state.settings
     return resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.getlist("x-forwarded-for"),
+        connection.client.host if connection.client else None,
+        connection.headers.getlist("x-forwarded-for"),
         tuple(settings.trusted_proxies),
     )
 

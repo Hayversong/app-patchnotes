@@ -7,23 +7,30 @@ Protocolo (JSON em frames de texto; detalhes em docs/API_CONTRACTS.md):
   servidor → {"type": "start"} · {"type": "token", "content": "..."}* · {"type": "done", "done": true, "tokens": n, "message": {...}}
   servidor → {"type": "error", "code": "...", "message": "..."}         (erros recuperáveis; a conexão segue aberta)
 
-O token nunca vai na URL. Códigos de fechamento: 4401 (não autenticado/expirado), 4403 (origem não permitida),
-1008 (violação de protocolo), 1009 (frame grande demais).
+O token nunca vai na URL. Códigos de fechamento: 4401 (não autenticado/expirado), 4408 (inatividade),
+4429 (conexões simultâneas demais para a conta), 1008 (violação de protocolo), 1009 (frame grande demais),
+1011 (erro interno), 1013 (serviço indisponível). Origem não permitida ou IP com conexões demais: recusado no
+handshake (HTTP 403), antes de alocar qualquer recurso.
+
+Limites (S3): vagas por IP (toda a vida da conexão, inclusive antes da autenticação) e por conta, compartilhadas
+entre réplicas via Redis, com heartbeat; a conexão também fecha por inatividade e quando o access token expira.
 """
 
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.core.rate_limit import RATE_LIMIT_MESSAGE, RateLimiter
+from app.core.connection_limits import ConnectionSlots
+from app.core.rate_limit import LIMITS_UNAVAILABLE_MESSAGE, RATE_LIMIT_MESSAGE, RateLimiter, client_ip
 from app.models import User
 from app.routers.chat import CHAT_RATE_LIMIT
 from app.schemas.chat import ChatMessageOut, SendChatRequest
@@ -36,8 +43,14 @@ router = APIRouter()
 
 CLOSE_UNAUTHORIZED = 4401
 CLOSE_FORBIDDEN_ORIGIN = 4403
+CLOSE_IDLE = 4408
+CLOSE_TOO_MANY = 4429
 CLOSE_POLICY = 1008
 CLOSE_TOO_LARGE = 1009
+CLOSE_INTERNAL = 1011
+CLOSE_UNAVAILABLE = 1013
+
+Held = list[tuple[str, str]]  # (chave, vaga) ocupadas por esta conexão
 
 
 class _Closed(Exception):
@@ -79,6 +92,26 @@ async def _authenticate(websocket: WebSocket, settings: Settings, token: str) ->
         return None
 
 
+async def _heartbeat(slots: ConnectionSlots, held: Held, ttl: float) -> None:
+    """Renova as vagas desta conexão enquanto ela vive (também durante a geração do LLM)."""
+    while True:
+        await asyncio.sleep(ttl / 3)
+        for key, slot in list(held):
+            try:
+                await slots.refresh(key, slot, ttl)
+            except RedisError as error:
+                logger.warning("Não foi possível renovar a vaga do WebSocket: %s", type(error).__name__)
+
+
+async def _release(slots: ConnectionSlots, held: Held) -> None:
+    for key, slot in held:
+        try:
+            await slots.release(key, slot)
+        except Exception as error:  # noqa: BLE001 — a vaga expira sozinha pelo TTL
+            logger.warning("Não foi possível liberar a vaga do WebSocket: %s", type(error).__name__)
+    held.clear()
+
+
 @router.websocket("/ws/chat")
 async def chat_websocket(websocket: WebSocket) -> None:
     settings: Settings = websocket.app.state.settings
@@ -87,20 +120,50 @@ async def chat_websocket(websocket: WebSocket) -> None:
     if origin is not None and origin.rstrip("/") not in settings.cors_origins:
         await websocket.close(CLOSE_FORBIDDEN_ORIGIN)
         return
-    await websocket.accept()
+
+    slots: ConnectionSlots = websocket.app.state.connection_slots
+    ttl = settings.ws_slot_ttl_seconds
+    held: Held = []
+    ip_key = f"ip:{client_ip(websocket)}"
     try:
-        await _serve(websocket, settings)
+        ip_slot = await slots.acquire(ip_key, settings.ws_max_connections_per_ip, ttl)
+    except RedisError as error:
+        logger.error("Vagas de WebSocket indisponíveis: %s", type(error).__name__)
+        await websocket.close(CLOSE_UNAVAILABLE)
+        return
+    if ip_slot is None:
+        await websocket.close(CLOSE_TOO_MANY)  # antes do accept: o handshake é recusado
+        return
+    held.append((ip_key, ip_slot))
+    heartbeat = asyncio.create_task(_heartbeat(slots, held, ttl))
+    try:
+        await websocket.accept()
+        await _serve(websocket, settings, slots, held)
     except (_Closed, WebSocketDisconnect):
         pass
+    except RedisError as error:
+        logger.error("Vagas de WebSocket indisponíveis: %s", type(error).__name__)
+        await _close_quietly(websocket, CLOSE_UNAVAILABLE)
     except Exception as error:  # noqa: BLE001 — uma conexão com problema não pode derrubar o servidor
         logger.error("Erro inesperado no WebSocket: %s", type(error).__name__, exc_info=error)
-        try:
-            await websocket.close(1011)
-        except Exception:  # noqa: BLE001
-            pass
+        await _close_quietly(websocket, CLOSE_INTERNAL)
+    finally:
+        heartbeat.cancel()
+        await _release(slots, held)
 
 
-async def _serve(websocket: WebSocket, settings: Settings) -> None:
+async def _close_quietly(websocket: WebSocket, code: int) -> None:
+    try:
+        await websocket.close(code)
+    except Exception:  # noqa: BLE001 — a conexão pode já estar fechada
+        pass
+
+
+def _seconds_until(moment: datetime) -> float:
+    return (moment - datetime.now(UTC)).total_seconds()
+
+
+async def _serve(websocket: WebSocket, settings: Settings, slots: ConnectionSlots, held: Held) -> None:
     max_bytes = settings.ws_max_frame_bytes
     try:
         first = await asyncio.wait_for(_receive_text(websocket, max_bytes), timeout=settings.ws_auth_timeout_seconds)
@@ -113,14 +176,33 @@ async def _serve(websocket: WebSocket, settings: Settings) -> None:
     if authenticated is None:
         await websocket.close(CLOSE_UNAUTHORIZED, "Sessão inválida ou expirada.")
         return
-    user, _ = authenticated
+    user, expires_at = authenticated
+
+    user_key = f"user:{user.id}"
+    user_slot = await slots.acquire(user_key, settings.ws_max_connections_per_user, settings.ws_slot_ttl_seconds)
+    if user_slot is None:
+        await _send_error(websocket, "too_many_connections", "Há conexões demais abertas para esta conta. Feche outras abas do chat.")
+        await websocket.close(CLOSE_TOO_MANY)
+        return
+    held.append((user_key, user_slot))
     await websocket.send_json({"type": "ready"})
 
     chat: ChatService = websocket.app.state.chat_service
     limiter: RateLimiter = websocket.app.state.rate_limiter
 
     while True:
-        data = _parse(await _receive_text(websocket, max_bytes))
+        # Espera a próxima mensagem até a inatividade OU a expiração do access token, o que vier antes.
+        token_left = _seconds_until(expires_at)
+        try:
+            text = await asyncio.wait_for(_receive_text(websocket, max_bytes), timeout=max(0.0, min(settings.ws_idle_timeout_seconds, token_left)))
+        except TimeoutError:
+            if _seconds_until(expires_at) <= 0:
+                await _send_error(websocket, "unauthorized", "Sessão expirada. Entre novamente.")
+                await websocket.close(CLOSE_UNAUTHORIZED)
+            else:
+                await websocket.close(CLOSE_IDLE, "Conexão encerrada por inatividade.")
+            return
+        data = _parse(text)
         if data is None or data.get("type") != "message":
             await _send_error(websocket, "invalid_message", 'Formato inválido. Envie {"type": "message", "message": "..."}.')
             continue
@@ -135,9 +217,15 @@ async def _serve(websocket: WebSocket, settings: Settings) -> None:
             await _send_error(websocket, "unauthorized", "Sessão inválida ou expirada. Entre novamente.")
             await websocket.close(CLOSE_UNAUTHORIZED)
             return
-        if settings.rate_limit_enabled and not await limiter.allow(f"chat:{user.id}", CHAT_RATE_LIMIT, 60):
-            await _send_error(websocket, "rate_limited", RATE_LIMIT_MESSAGE)
-            continue
+        if settings.rate_limit_enabled:
+            try:
+                allowed = await limiter.allow(f"chat:{user.id}", CHAT_RATE_LIMIT, 60)
+            except RedisError:
+                await _send_error(websocket, "unavailable", LIMITS_UNAVAILABLE_MESSAGE)
+                continue
+            if not allowed:
+                await _send_error(websocket, "rate_limited", RATE_LIMIT_MESSAGE)
+                continue
 
         await websocket.send_json({"type": "start"})
 
@@ -156,4 +244,3 @@ async def _serve(websocket: WebSocket, settings: Settings) -> None:
 
         payload = ChatMessageOut.model_validate(answer, from_attributes=True).model_dump(mode="json", exclude_none=True)
         await websocket.send_json({"type": "done", "done": True, "tokens": answer.tokens_used, "message": payload})
-

@@ -67,6 +67,13 @@ class Settings(BaseSettings):
 
     ws_auth_timeout_seconds: float = Field(default=5, gt=0)
     ws_max_frame_bytes: int = Field(default=16 * 1024, ge=1024)
+    # Conexões simultâneas: por conta autenticada e por IP (inclui as ainda não autenticadas).
+    ws_max_connections_per_user: int = Field(default=3, ge=1)
+    ws_max_connections_per_ip: int = Field(default=20, ge=1)
+    # Sem mensagens do cliente por este tempo, a conexão é encerrada (o frontend reconecta no próximo envio).
+    ws_idle_timeout_seconds: float = Field(default=600, gt=0)
+    # Validade de cada vaga de conexão; renovada a cada ttl/3 enquanto a conexão vive (processo morto = vaga expira).
+    ws_slot_ttl_seconds: float = Field(default=60, ge=1)
 
     @field_validator("trusted_proxies", mode="before")
     @classmethod
