@@ -66,9 +66,14 @@ Documentação interativa (fora de produção): http://127.0.0.1:8000/api/docs. 
 ### Ollama
 
 ```bash
-sudo systemctl enable --now ollama   # escuta só em 127.0.0.1:11434 por padrão
+# Instalador oficial: inclui as bibliotecas CUDA (NVIDIA) e cria /etc/systemd/system/ollama.service.
+# Leia o script antes de rodar. Se o driver NVIDIA já estiver instalado (nvidia-smi funciona), ele não mexe no driver.
+curl -fsSL -o install.sh https://ollama.com/install.sh && sh install.sh
 ollama pull qwen2.5:3b               # ~1,9 GB; cabe numa GPU de 4 GB
+curl -s localhost:11434/api/ps       # com o modelo carregado, size_vram == size significa 100% na GPU
 ```
+
+> **Fedora:** o pacote `ollama` do repositório do Fedora vem compilado **só com CPU/ROCm (AMD)**. Em GPU NVIDIA ele roda na CPU. Use o instalador oficial acima: ele instala em `/usr/local` e o serviço em `/etc/systemd/system` tem prioridade sobre o do pacote. Os modelos continuam em `/var/lib/ollama`.
 
 Não exponha a porta 11434 publicamente (não defina `OLLAMA_HOST=0.0.0.0` sem firewall). Modelo, URL, temperatura, contexto, limite de tokens e tempos limite são configuráveis em `.env` (`OLLAMA_*`). Sem Ollama, a API continua no ar: o chat responde **503** (REST) ou um evento `error` com `code: "llm_unavailable"` (WebSocket).
 
@@ -102,7 +107,7 @@ Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execu
 
 ### Autenticação
 - **Senhas:** Argon2id com sal aleatório por hash (`argon2-cffi`), calculado fora do event loop. Login com e-mail inexistente também calcula um hash, para não revelar contas pelo tempo de resposta.
-- **Access token:** JWT HS256 em `Authorization: Bearer` (campo `token` do contrato). Validade de **24h** (`ACCESS_TOKEN_TTL_MINUTES=1440`) porque o frontend da Parte 1 ainda não renova tokens; reduzir para ~15 min quando ele usar `/auth/refresh`.
+- **Access token:** JWT HS256 em `Authorization: Bearer` (campo `token` do contrato). Validade de **15 min** (`ACCESS_TOKEN_TTL_MINUTES=15`); o frontend renova sozinho com `/auth/refresh` ao receber 401 (também no WebSocket, ao ser recusado com 4401).
 - **Refresh token:** valor aleatório de 256 bits em cookie **httpOnly, SameSite=Strict, path `/api/auth`** (`Secure` em produção); no banco só o SHA-256. Cada uso **rotaciona** o token; reapresentar um token já usado **revoga a família inteira** (sinal de roubo). `POST /api/auth/logout` revoga a família.
 - **Redefinição de senha:** token aleatório de 256 bits, guardado como SHA-256, **uso único** (UPDATE condicional), validade de 30 min, e pedidos novos invalidam os anteriores. O link vai no **fragmento** (`/reset-password#token=…`), que navegadores não enviam a servidores nem gravam em logs de acesso. A redefinição revoga todos os refresh tokens e invalida access tokens emitidos antes (`users.tokens_valid_after`). `forgot-password` sempre responde 202 com a mesma mensagem e envia o e-mail depois da resposta.
 - **WebSocket:** o token **não vai na URL**. O cliente envia `{"type":"auth","token":...}` como primeira mensagem (prazo de 5 s); o `Origin` precisa estar em `CORS_ORIGINS`. O token é revalidado a cada mensagem (expiração, senha redefinida ou conta removida encerram a conexão com 4401). Funciona em qualquer navegador, porque não depende de cabeçalhos customizados no handshake.
@@ -124,6 +129,6 @@ Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execu
 - O histórico do chat devolve as 200 mensagens mais recentes (`CHAT_HISTORY_MAX`).
 
 ### Pendências conhecidas
-- O frontend ainda **não** chama `/auth/refresh` nem `/auth/logout`, e não tem telas de "esqueci a senha"/redefinição. Isso exige mudanças no frontend, que dependem de aprovação.
-- **Desempenho do Ollama do Fedora:** o pacote `ollama` do Fedora (0.12.x) vem compilado só com ROCm (AMD). Em GPUs NVIDIA o modelo roda na CPU: o primeiro token leva de ~1 s (prompt curto) a 20–30 s (com 10 mensagens de contexto). Confira com `curl -s localhost:11434/api/ps` (`size_vram: 0` significa CPU). Para usar a GPU NVIDIA é preciso uma build do Ollama com CUDA. Enquanto isso, reduzir `CHAT_CONTEXT_MESSAGES` encurta o prompt.
-- O botão "Sair" do frontend só apaga o cookie local; o refresh token continua válido até expirar ou ser rotacionado.
+- **Desempenho medido** (12/11/2026, RTX 3050 Laptop de 4 GB, `qwen2.5:3b` Q4_K_M, Ollama oficial 0.40 com CUDA): modelo 100% na GPU usando ~2,1 GB de VRAM; ~75 tokens/s; carga a frio ~3 s (a primeiríssima carga após instalar levou ~50 s). Pelo WebSocket, o 1º token chega em ~0,1 s com o modelo carregado. Antes, com o pacote do Fedora só em CPU: 1º token em ~7,6 s e ~6 tokens/s.
+- **Contexto do modelo reduzido para GPUs de 4 GB:** `OLLAMA_NUM_CTX=2048` e `CHAT_CONTEXT_MESSAGES=6`. Sobram ~1.500 tokens para sistema, contexto, histórico e mensagem (a resposta usa até 512). Se o prompt passar disso, o Ollama descarta o começo sem avisar. Para economizar mais VRAM numa build com CUDA, inicie o serviço do Ollama com `OLLAMA_FLASH_ATTENTION=1` e `OLLAMA_KV_CACHE_TYPE=q8_0`.
+- O logout do frontend revoga a sessão no servidor em segundo plano; se essa chamada falhar (rede), a sessão local é apagada mesmo assim e o refresh token só expira no prazo.

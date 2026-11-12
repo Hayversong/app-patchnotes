@@ -47,11 +47,11 @@ O projeto está sendo desenvolvido com Next.js e possui uma API simulada para pe
 - Autenticação com JWT, refresh token rotacionado em cookie httpOnly, recuperação de senha por e-mail e atualização de perfil.
 - Chat com LLM local (Ollama) via REST e via WebSocket `/ws/chat` com streaming token a token; mensagens e consumo de tokens persistidos.
 - Métricas do dashboard, histórico de consumo e saldo mensal de tokens.
+- No frontend: renovação automática da sessão (`/auth/refresh`), logout que revoga a sessão no servidor e telas `/forgot-password` e `/reset-password`.
 - Detalhes em [`backend/README.md`](backend/README.md).
 
 ## O que será implementado
 
-- Uso do refresh token e da recuperação de senha pelas telas do frontend.
 - Edição e gerenciamento completo das entradas do devlog.
 - Upload e armazenamento de imagens de perfil.
 - Maior cobertura de testes end-to-end.
@@ -134,4 +134,4 @@ src/
 
 ## Status do projeto
 
-O frontend funciona tanto com a API simulada (MSW) quanto com o backend real, com persistência em PostgreSQL e assistente via Ollama local. A próxima etapa é usar no frontend os recursos restantes do backend (refresh de sessão e recuperação de senha).
+O frontend funciona tanto com a API simulada (MSW) quanto com o backend real, com persistência em PostgreSQL e assistente via Ollama local. O frontend renova a sessão automaticamente e oferece recuperação de senha.

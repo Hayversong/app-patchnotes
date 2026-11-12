@@ -4,10 +4,12 @@
 .codex/
 .agents/
 .docs/
-/docs/
+/docs/*
 *.md
 checkpoint.md
 !README.md
+# Contratos da API: fonte única entre frontend e backend, versionada.
+!/docs/API_CONTRACTS.md
 !**/LICENSE.md
 !**/LICENCE.md
 
