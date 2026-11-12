@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +38,9 @@ async def update_profile_fields(session: AsyncSession, user_id: uuid.UUID, value
     return result.scalar_one_or_none()
 
 
-async def set_password(session: AsyncSession, user_id: uuid.UUID, password_hash: str, tokens_valid_after: datetime) -> None:
+async def set_password(session: AsyncSession, user_id: uuid.UUID, password_hash: str) -> None:
+    """Troca o hash e incrementa a versão de sessão no próprio UPDATE (atômico: duas redefinições simultâneas
+    incrementam duas vezes, nunca "perdem" um incremento)."""
     await session.execute(
-        update(User).where(User.id == user_id).values(password_hash=password_hash, tokens_valid_after=tokens_valid_after)
+        update(User).where(User.id == user_id).values(password_hash=password_hash, session_version=User.session_version + 1)
     )

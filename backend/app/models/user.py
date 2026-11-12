@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utcnow
@@ -18,8 +18,9 @@ class User(Base):
     bio: Mapped[str | None] = mapped_column(String(240))
     avatar_url: Mapped[str | None] = mapped_column(Text)
     github_url: Mapped[str | None] = mapped_column(Text)
-    # Access tokens emitidos antes deste instante são recusados (ex.: após redefinir a senha).
-    tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Versão de sessão gravada no JWT (claim "sv"). Incrementar recusa na hora todos os access tokens já emitidos
+    # (redefinição de senha). Inteiro, sem a janela de 1 s de uma comparação por horário.
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

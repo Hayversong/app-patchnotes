@@ -118,3 +118,4 @@ def test_profile_update_does_not_undo_concurrent_password_reset(harness: Harness
     login = lambda password: harness.client.post("/api/auth/login", json={"email": "pessoa@patchnotes.dev", "password": password})  # noqa: E731
     assert login("senha-segura-1").status_code == 401, "a senha antiga não pode voltar a valer"
     assert login("senha-nova-123").status_code == 200
+    assert harness.client.get("/api/auth/me", headers=harness.auth(old_token)).status_code == 401, "sessões antigas continuam encerradas"

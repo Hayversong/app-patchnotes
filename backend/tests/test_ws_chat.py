@@ -142,7 +142,7 @@ def test_client_disconnect_mid_stream_marks_request_failed(harness: Harness, use
 def test_token_revoked_during_connection_closes_on_next_message(harness: Harness, user: dict) -> None:
     with connect(harness) as ws:
         authenticate(ws, user["token"])
-        harness.sql("UPDATE users SET tokens_valid_after = now() + interval '1 minute'")
+        harness.sql("UPDATE users SET session_version = session_version + 1")
         ws.send_json({"type": "message", "message": "oi"})
         assert ws.receive_json()["code"] == "unauthorized"
         with pytest.raises(WebSocketDisconnect) as closed:

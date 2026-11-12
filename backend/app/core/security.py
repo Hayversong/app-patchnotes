@@ -39,6 +39,7 @@ def password_needs_rehash(password_hash: str) -> bool:
 @dataclass(frozen=True)
 class AccessClaims:
     user_id: uuid.UUID
+    session_version: int
     issued_at: datetime
     expires_at: datetime
 
@@ -47,11 +48,12 @@ class InvalidTokenError(Exception):
     pass
 
 
-def create_access_token(user_id: uuid.UUID, settings: Settings) -> str:
+def create_access_token(user_id: uuid.UUID, session_version: int, settings: Settings) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "type": ACCESS_TOKEN_TYPE,
+        "sv": session_version,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.access_token_ttl_minutes)).timestamp()),
         "jti": secrets.token_hex(8),
@@ -65,12 +67,14 @@ def decode_access_token(token: str, settings: Settings) -> AccessClaims:
             token,
             settings.jwt_secret.get_secret_value(),
             algorithms=[JWT_ALGORITHM],
-            options={"require": ["sub", "exp", "iat", "type"]},
+            options={"require": ["sub", "exp", "iat", "type", "sv"]},
         )
-        if payload.get("type") != ACCESS_TOKEN_TYPE:
+        session_version = payload["sv"]
+        if payload.get("type") != ACCESS_TOKEN_TYPE or not isinstance(session_version, int) or isinstance(session_version, bool):
             raise InvalidTokenError
         return AccessClaims(
             user_id=uuid.UUID(str(payload["sub"])),
+            session_version=session_version,
             issued_at=datetime.fromtimestamp(int(payload["iat"]), UTC),
             expires_at=datetime.fromtimestamp(int(payload["exp"]), UTC),
         )

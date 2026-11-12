@@ -47,7 +47,7 @@ async def _issue(session: AsyncSession, settings: Settings, user: User, family_i
         token_hash=hash_opaque_token(raw_refresh),
         expires_at=_now() + timedelta(days=settings.refresh_token_ttl_days),
     )
-    return IssuedSession(user, create_access_token(user.id, settings), raw_refresh), stored.id
+    return IssuedSession(user, create_access_token(user.id, user.session_version, settings), raw_refresh), stored.id
 
 
 async def register(session: AsyncSession, settings: Settings, *, name: str, email: str, password: str) -> IssuedSession:
@@ -118,7 +118,7 @@ async def authenticate_access_token(session: AsyncSession, settings: Settings, t
     user = await user_repo.get_by_id(session, claims.user_id)
     if user is None:
         raise unauthorized()
-    if user.tokens_valid_after is not None and claims.issued_at < user.tokens_valid_after.replace(microsecond=0):
+    if claims.session_version != user.session_version:  # senha redefinida depois da emissão
         raise unauthorized()
     return user, claims.expires_at
 
@@ -144,7 +144,7 @@ async def reset_password(session: AsyncSession, *, token: str, password: str) ->
         raise ApiError(400, INVALID_RESET_TOKEN)
     password_hash = await run_in_threadpool(hash_password, password)
     # Encerra todas as sessões: refresh tokens revogados e access tokens anteriores recusados.
-    await user_repo.set_password(session, user_id, password_hash, tokens_valid_after=now)
+    await user_repo.set_password(session, user_id, password_hash)
     await token_repo.revoke_all_for_user(session, user_id, now)
 
 

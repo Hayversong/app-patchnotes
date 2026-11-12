@@ -87,10 +87,16 @@ def test_me_requires_valid_bearer_token(harness: Harness, user: dict) -> None:
 def test_expired_or_forged_access_token_is_rejected(harness: Harness, user: dict) -> None:
     secret = harness.settings.jwt_secret.get_secret_value()
     now = int(time.time())
-    expired = jwt.encode({"sub": user["user"]["id"], "type": "access", "iat": now - 120, "exp": now - 60}, secret, algorithm="HS256")
-    forged = jwt.encode({"sub": user["user"]["id"], "type": "access", "iat": now, "exp": now + 60}, "outro-segredo-qualquer-com-32-caracteres", algorithm="HS256")
-    wrong_type = jwt.encode({"sub": user["user"]["id"], "type": "refresh", "iat": now, "exp": now + 60}, secret, algorithm="HS256")
-    for token in (expired, forged, wrong_type):
+    base = {"sub": user["user"]["id"], "type": "access", "sv": 0, "iat": now, "exp": now + 60}
+    valid = jwt.encode(base, secret, algorithm="HS256")
+    assert harness.client.get("/api/auth/me", headers=harness.auth(valid)).status_code == 200  # controle: só muda um campo por vez
+    expired = jwt.encode({**base, "iat": now - 120, "exp": now - 60}, secret, algorithm="HS256")
+    forged = jwt.encode(base, "outro-segredo-qualquer-com-32-caracteres", algorithm="HS256")
+    wrong_type = jwt.encode({**base, "type": "refresh"}, secret, algorithm="HS256")
+    old_version = jwt.encode({**base, "sv": 1}, secret, algorithm="HS256")
+    bool_version = jwt.encode({**base, "sv": False}, secret, algorithm="HS256")
+    no_version = jwt.encode({key: value for key, value in base.items() if key != "sv"}, secret, algorithm="HS256")
+    for token in (expired, forged, wrong_type, old_version, bool_version, no_version):
         assert harness.client.get("/api/auth/me", headers=harness.auth(token)).status_code == 401
 
 
@@ -163,8 +169,6 @@ def test_reset_password_flow_is_single_use_and_ends_sessions(harness: Harness, u
     old_access = user["token"]
     harness.client.post("/api/auth/forgot-password", json={"email": "pessoa@patchnotes.dev"})
     raw = _reset_token_from_mail(harness)
-    time.sleep(1.1)  # o iat do JWT tem resolução de segundos
-
     assert harness.client.post("/api/auth/reset-password", json={"token": raw, "password": "nova-senha-123"}).status_code == 204
     reused = harness.client.post("/api/auth/reset-password", json={"token": raw, "password": "outra-senha-123"})
     assert reused.status_code == 400 and "inválido ou expirado" in reused.json()["message"]
