@@ -56,8 +56,8 @@ A UI exibe `message` (via `getApiErrorMessage`) e preserva o que o usuário digi
 | 500 | Falha inesperada do servidor | Estado de erro com **Tentar novamente**; consultas fazem 1 retry automático |
 | 403 | *(Parte 2)* `Origin` não autorizado em `/auth/refresh` e `/auth/logout` | Mensagem do servidor |
 | 413 | *(Parte 2)* Corpo da requisição maior que 64 KB | Mensagem do servidor |
-| 429 | *(Parte 2)* Limite de requisições atingido ou cota mensal de tokens esgotada (chat) | Mensagem do servidor; texto preservado |
-| 503 / 504 | *(Parte 2)* Chat: LLM indisponível / demorou demais | Mensagem do servidor; texto preservado |
+| 429 | *(Parte 2)* Limite de requisições atingido (login, cadastro, recuperação, chat, criação de devlog, edição de perfil) ou cota mensal de tokens esgotada (chat) | Mensagem do servidor; texto preservado |
+| 503 / 504 | *(Parte 2)* Chat: LLM indisponível / demorou demais. 503 também quando o armazenamento dos limites de requisição (Redis) está fora do ar, em qualquer rota limitada | Mensagem do servidor; texto preservado |
 
 Consultas (React Query) **não** repetem automaticamente erros 4xx; repetem uma vez erros 5xx/rede.
 
@@ -181,6 +181,20 @@ Entradas do usuário, **mais recentes primeiro**.
 ```
 
 Vazio: `{ "entries": [] }`. Erros: `401` · `500`.
+
+*(Parte 2, mudança aprovada e compatível)* **Paginação opcional:**
+
+| Query | Tipo | Regras |
+|---|---|---|
+| `limit` | number | 1 a 100; padrão 100 |
+| `cursor` | string | valor de `nextCursor` da página anterior (opaco) |
+
+A resposta ganha `nextCursor?: string`, presente **só** quando há mais páginas. Sem parâmetros, a resposta tem o formato da Parte 1 com as **100 entradas mais recentes**; o frontend atual (que não pagina) continua funcionando, mas só mostra essas 100. A ordem é estável mesmo com entradas criadas entre as páginas (keyset por `createdAt` e `id`). Erros: `400` (`limit` fora do intervalo ou `cursor` inválido, com `details.fieldErrors`).
+
+```json
+// GET /devlog/entries?limit=2
+{ "entries": [{ "id": "…", "title": "…", "content": "…", "tags": [], "createdAt": "…" }, { "…": "…" }], "nextCursor": "eyJ0IjoiMjAyNi0xMS0wMlQxMDowMDowMCswMDowMCIsImkiOiI…" }
+```
 
 ### `POST /devlog/entries` 🔒
 
@@ -382,9 +396,9 @@ Fica fora do prefixo `/api`; em desenvolvimento, `ws://127.0.0.1:8000/ws/chat`. 
 | servidor → cliente | `{"type":"done","done":true,"tokens":43,"message":ChatMessage}` | fim da resposta; `message` é a mensagem do assistente persistida |
 | servidor → cliente | `{"type":"error","code":"...","message":"..."}` | erro recuperável; a conexão continua aberta |
 
-Códigos de `error`: `invalid_message`, `rate_limited`, `quota_exceeded`, `llm_unavailable`, `llm_timeout`, `llm_error`, `unauthorized` (seguido de fechamento).
+Códigos de `error`: `invalid_message`, `rate_limited`, `quota_exceeded`, `llm_unavailable`, `llm_timeout`, `llm_error`, `unavailable` (armazenamento dos limites fora do ar), `unauthorized` e `too_many_connections` (ambos seguidos de fechamento).
 
-Códigos de fechamento: `4401` (sem autenticação, prazo esgotado, token inválido ou revogado), `1008` (frame binário), `1009` (frame acima de 16 KB), `1011` (erro interno).
+Códigos de fechamento: `4401` (sem autenticação, prazo esgotado, token inválido, revogado ou **expirado durante a conexão**), `4408` (inatividade: 10 min sem mensagens), `4429` (mais de 3 conexões simultâneas da mesma conta), `1008` (frame binário), `1009` (frame acima de 16 KB), `1011` (erro interno), `1013` (serviço indisponível). Handshake recusado (HTTP 403): `Origin` não autorizado ou mais de 20 conexões simultâneas do mesmo IP. O frontend reconecta sozinho no próximo envio depois de qualquer fechamento.
 
 **Uso pelo frontend:** com `NEXT_PUBLIC_CHAT_WS_URL` definido e o MSW desligado, a tela do chat usa este WebSocket (`src/modules/chat/services/chat-socket.ts`). Ela abre a conexão no primeiro envio e a reaproveita, e fecha quando a pessoa sai da tela. Sem a variável, ou com o MSW, continua usando `POST /chat/send`.
 

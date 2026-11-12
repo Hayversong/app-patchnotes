@@ -47,7 +47,7 @@ cp .env.example .env
 # Edite .env: defina POSTGRES_PASSWORD (e use a mesma em DATABASE_URL/TEST_DATABASE_URL)
 # e gere JWT_SECRET:  python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 
-# 3. PostgreSQL + Mailpit (portas presas a 127.0.0.1)
+# 3. PostgreSQL + Redis + Mailpit (portas presas a 127.0.0.1)
 docker compose up -d --wait
 # Na primeira subida, docker/postgres-init cria também o banco de testes patchnotes_test.
 
@@ -57,8 +57,28 @@ docker compose up -d --wait
 # 5. (opcional) Conta fictícia: dev@patchnotes.dev / patchnotes123
 .venv/bin/python -m app.scripts.seed
 
-# 6. API
-.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --ws-max-size 65536
+# 6. API (use este comando, não o uvicorn direto — ver "Proxy e IP do cliente")
+.venv/bin/python -m app            # API_HOST, API_PORT e API_WORKERS opcionais
+```
+
+### Manutenção agendada
+
+`python -m app.scripts.cleanup` apaga refresh tokens vencidos, tokens de redefinição vencidos ou usados e marca como falha os pedidos de chat que ficaram `pending` (processo encerrado no meio da geração). Trabalha em lotes de 1.000 linhas, cada um numa transação curta, e usa um advisory lock do PostgreSQL: agendar em todas as réplicas é seguro, só uma faz o trabalho. Exemplo com timer do systemd (a cada hora):
+
+```ini
+# /etc/systemd/system/patchnotes-cleanup.service
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/patchnotes/backend
+EnvironmentFile=/srv/patchnotes/backend/.env
+ExecStart=/srv/patchnotes/backend/.venv/bin/python -m app.scripts.cleanup
+
+# /etc/systemd/system/patchnotes-cleanup.timer
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target
 ```
 
 Documentação interativa (fora de produção): http://127.0.0.1:8000/api/docs. E-mails de desenvolvimento: http://localhost:8025.
@@ -101,7 +121,7 @@ docker compose up -d --wait
 .venv/bin/python -m pytest -q
 ```
 
-Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execução, testando `downgrade` e `upgrade`), um LLM falso programável e um mailer falso. Cobrem autenticação (JWT, refresh com rotação e detecção de reuso, logout, recuperação de senha), validação, persistência, autorização entre usuários, limites de requisição, ausência de segredos nos logs, erros do LLM, streaming e desconexões no WebSocket, cliente Ollama (contra transporte HTTP simulado), métricas e saldo de tokens.
+Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execução, testando `downgrade` e `upgrade`), um LLM falso programável e um mailer falso. Com `TEST_REDIS_URL` (banco 15 do Redis do compose), também testam os limites compartilhados entre réplicas; sem ele, esses testes são pulados (na CI são obrigatórios). Cobrem autenticação (JWT, refresh com rotação e detecção de reuso, logout, recuperação de senha), validação, persistência, autorização entre usuários, limites de requisição, ausência de segredos nos logs, erros do LLM, streaming e desconexões no WebSocket, cliente Ollama (contra transporte HTTP simulado), métricas e saldo de tokens.
 
 ## Decisões e limitações
 
@@ -109,8 +129,10 @@ Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execu
 - **Senhas:** Argon2id com sal aleatório por hash (`argon2-cffi`), calculado fora do event loop. Login com e-mail inexistente também calcula um hash, para não revelar contas pelo tempo de resposta.
 - **Access token:** JWT HS256 em `Authorization: Bearer` (campo `token` do contrato). Validade de **15 min** (`ACCESS_TOKEN_TTL_MINUTES=15`); o frontend renova sozinho com `/auth/refresh` ao receber 401 (também no WebSocket, ao ser recusado com 4401).
 - **Refresh token:** valor aleatório de 256 bits em cookie **httpOnly, SameSite=Strict, path `/api/auth`** (`Secure` em produção); no banco só o SHA-256. Cada uso **rotaciona** o token; reapresentar um token já usado **revoga a família inteira** (sinal de roubo). `POST /api/auth/logout` revoga a família.
-- **Redefinição de senha:** token aleatório de 256 bits, guardado como SHA-256, **uso único** (UPDATE condicional), validade de 30 min, e pedidos novos invalidam os anteriores. O link vai no **fragmento** (`/reset-password#token=…`), que navegadores não enviam a servidores nem gravam em logs de acesso. A redefinição revoga todos os refresh tokens e invalida access tokens emitidos antes (`users.tokens_valid_after`). `forgot-password` sempre responde 202 com a mesma mensagem e envia o e-mail depois da resposta.
-- **WebSocket:** o token **não vai na URL**. O cliente envia `{"type":"auth","token":...}` como primeira mensagem (prazo de 5 s); o `Origin` precisa estar em `CORS_ORIGINS`. O token é revalidado a cada mensagem (expiração, senha redefinida ou conta removida encerram a conexão com 4401). Funciona em qualquer navegador, porque não depende de cabeçalhos customizados no handshake.
+- **Redefinição de senha:** token aleatório de 256 bits, guardado como SHA-256, **uso único** (UPDATE condicional), validade de 30 min, e pedidos novos invalidam os anteriores. O link vai no **fragmento** (`/reset-password#token=…`), que navegadores não enviam a servidores nem gravam em logs de acesso. A redefinição revoga todos os refresh tokens e incrementa `users.session_version`: o JWT carrega essa versão (claim `sv`) e tokens com versão antiga são recusados na hora, sem janela de tempo. `forgot-password` sempre responde 202 com a mesma mensagem; a consulta, a gravação do token e o e-mail acontecem **depois** da resposta, pelo mesmo caminho para qualquer e-mail (o tempo de resposta não revela a conta).
+- **Perfil × senha:** `PATCH /profile` grava só as colunas de perfil (`UPDATE … RETURNING`); nunca regrava senha nem versão de sessão, então não desfaz uma redefinição concorrente.
+- **WebSocket:** o token **não vai na URL**. O cliente envia `{"type":"auth","token":...}` como primeira mensagem (prazo de 5 s); o `Origin` precisa estar em `CORS_ORIGINS`. O token é revalidado a cada mensagem (expiração, senha redefinida ou conta removida encerram a conexão com 4401) e a conexão também fecha com 4401 quando ele expira, mesmo sem mensagens. Funciona em qualquer navegador, porque não depende de cabeçalhos customizados no handshake.
+- **Conexões WebSocket:** até `WS_MAX_CONNECTIONS_PER_USER` (3) por conta e `WS_MAX_CONNECTIONS_PER_IP` (20) por IP, contando as ainda não autenticadas (recusadas no handshake). Fecha com 4408 após `WS_IDLE_TIMEOUT_SECONDS` (600) sem mensagens. As vagas ficam no Redis com validade de `WS_SLOT_TTL_SECONDS`, renovada por heartbeat: se um processo morrer, as vagas dele expiram sozinhas.
 
 ### Tokens do LLM e cota
 - A contagem vem do Ollama (`prompt_eval_count` e `eval_count`). A mensagem do usuário guarda os tokens de prompt (inclui sistema e contexto) e a do assistente guarda os de resposta (`tokensUsed` do contrato). Se o modelo não informar, usa-se a estimativa **⌈caracteres / 4⌉** e o registro fica marcado `estimated=true`.
@@ -125,7 +147,10 @@ Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execu
 
 ### Limites
 - Corpo HTTP ≤ 64 KB (413); frame WebSocket ≤ 16 KB (fecha com 1009); mensagem de chat ≤ 2.000 caracteres; contexto ≤ 4.000.
-- Limites de taxa **em memória, por processo**: login 20/min por IP e 10/5 min por e-mail; cadastro 10/h por IP; recuperação 5/15 min por IP e 3/15 min por e-mail; refresh 30/min; chat 20/min por usuário (REST + WS). Com vários workers ou réplicas, mova para Redis. Atrás de proxy confiável, use `TRUST_PROXY_HEADERS=true`.
+- **Limites de taxa** (janela deslizante): login 20/min por IP; **falhas** de login 10/5 min por (e-mail, IP) e 100/h por e-mail; cadastro 10/h por IP; recuperação 5/15 min por IP, 3/15 min por (e-mail, IP) e 10/h por e-mail; redefinição 10/15 min por IP; refresh 30/min por IP; chat 20/min por usuário (REST + WS); devlog 30 criações/min e perfil 20 alterações/min por usuário. E-mails entram nas chaves só como SHA-256.
+- **Onde ficam:** com `REDIS_URL`, no Redis, compartilhados entre processos e réplicas (scripts Lua atômicos, relógio do Redis, TTL por chave). **Obrigatório em production.** Sem ele (desenvolvimento), na memória do processo, com limpeza incremental. Se o Redis cair, os limites **falham fechados**: 503 em vez de seguir sem limite.
+- **Proxy e IP do cliente:** o IP vem da conexão TCP. O `X-Forwarded-For` só é lido se a conexão vier de um endereço listado em `TRUSTED_PROXIES` (IPs ou CIDR), e é percorrido da direita para a esquerda até o primeiro endereço não confiável; valores forjados à esquerda são ignorados. **Inicie com `python -m app`**: o uvicorn, por padrão, confia no `X-Forwarded-For` de qualquer conexão vinda de 127.0.0.1 e reescreve o IP antes da aplicação ver a conexão. Atrás do rewrite do Next.js (que repassa o cabeçalho do cliente sem alterar), isso deixava qualquer pessoa escolher o próprio IP. **Não liste o servidor Next.js em `TRUSTED_PROXIES`.** Em produção, coloque um proxy reverso (nginx, Caddy) que encaminhe `/api` e `/ws` direto à API e **sobrescreva** o `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`), e liste o IP dele. Em desenvolvimento, pelo rewrite do Next, todos os navegadores aparecem como 127.0.0.1 e dividem os limites por IP.
+- `GET /devlog/entries` é paginado (`?limit=` até 100 e `?cursor=`); sem parâmetros, devolve as 100 entradas mais recentes.
 - O histórico do chat devolve as 200 mensagens mais recentes (`CHAT_HISTORY_MAX`).
 
 ### Pendências conhecidas

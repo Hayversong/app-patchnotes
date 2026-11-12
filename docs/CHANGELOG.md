@@ -4,6 +4,18 @@ Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada ite
 
 ## 12/11/2026
 
+### Correções da revisão de segurança (`d446ece` … `a4488ec`)
+Status completo em `docs/SEGURANCA.md`.
+- `d446ece` **S1:** `PATCH /profile` não desfaz mais uma redefinição de senha concorrente.
+- `502c8a8` **S8:** versão de sessão no JWT (`sv`) no lugar de `tokens_valid_after` (migration 0002).
+- `6424da7` **S2/S4:** limites no Redis (várias réplicas) e IP do cliente só via `TRUSTED_PROXIES`; `python -m app` como comando oficial; Redis no compose e na CI.
+- `1b169cf` **S3:** limites de conexões WebSocket por conta e por IP, inatividade e expiração do token.
+- `072768f` **S7:** recuperação de senha sem diferença de tempo entre contas. `0caa544` corrige um teste instável.
+- `02e3d24` **Limpeza:** `python -m app.scripts.cleanup` em lotes (migration 0003, índices).
+- `5956455` **Devlog/perfil:** paginação por cursor compatível e limites de escrita.
+- `a4488ec` **Frontend:** CSP com nonce, cabeçalhos de segurança, `Secure` no cookie em HTTPS; o middleware do Next passou a ser executado (estava fora de `src/`).
+- Novas variáveis: `REDIS_URL`, `TRUSTED_PROXIES`, `TEST_REDIS_URL`, `WS_MAX_CONNECTIONS_PER_USER`, `WS_MAX_CONNECTIONS_PER_IP`, `WS_IDLE_TIMEOUT_SECONDS`, `WS_SLOT_TTL_SECONDS`. Removida: `TRUST_PROXY_HEADERS` (definida como `true`, impede a inicialização).
+
 ### `docs(revisão)` — revisão de arquitetura e segurança
 - `docs/REVISAO_ARQUITETURA_SEGURANCA.md`: revisão estática do frontend e do backend (somente relatório, sem mudança de código).
 - Principal achado: **S1 (alta, comprovado)** — `PATCH /profile` usa `session.merge` e pode desfazer uma redefinição de senha concorrente (hash antigo e `tokens_valid_after` regravados). Demais: IP do cliente atrás do rewrite do Next (S2), WebSocket sem limite de conexões (S3), limpeza do rate limiter (S4), cookie de access token legível por JS e sem CSP (S5), entre outros.
