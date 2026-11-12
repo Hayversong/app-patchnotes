@@ -16,8 +16,15 @@ class DevlogEntryOut(ApiModel):
     created_at: UtcDateTime
 
 
+# Sem `limit`, a primeira página tem o tamanho máximo: o frontend da Parte 1 (que não pagina) continua vendo as
+# entradas mais recentes, até este número.
+DEVLOG_PAGE_MAX = 100
+
+
 class DevlogEntriesResponse(ApiModel):
     entries: list[DevlogEntryOut]
+    # Presente só quando há mais páginas (campos opcionais são omitidos, como no resto do contrato).
+    next_cursor: str | None = None
 
 
 class CreateDevlogRequest(ApiModel):

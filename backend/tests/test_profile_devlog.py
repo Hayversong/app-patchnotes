@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from tests.conftest import Harness
@@ -119,3 +121,72 @@ def test_profile_update_does_not_undo_concurrent_password_reset(harness: Harness
     assert login("senha-segura-1").status_code == 401, "a senha antiga não pode voltar a valer"
     assert login("senha-nova-123").status_code == 200
     assert harness.client.get("/api/auth/me", headers=harness.auth(old_token)).status_code == 401, "sessões antigas continuam encerradas"
+
+
+# --- Paginação e limites de escrita ------------------------------------------
+
+def _entries(harness: Harness, token: str, **params: object) -> dict:
+    response = harness.client.get("/api/devlog/entries", headers=harness.auth(token), params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_devlog_pagination_is_stable_with_ties_and_omits_cursor_at_the_end(harness: Harness, user: dict) -> None:
+    # 5 entradas, três com o MESMO created_at: o desempate por id não pode duplicar nem pular entradas.
+    for index, moment in enumerate(["2026-11-01T10:00:00Z", "2026-11-02T10:00:00Z", "2026-11-02T10:00:00Z", "2026-11-02T10:00:00Z", "2026-11-03T10:00:00Z"]):
+        harness.sql(
+            "INSERT INTO devlog_entries (id, user_id, title, content, tags, created_at) VALUES (gen_random_uuid(), :u, :t, 'conteúdo', '{}', :c)",
+            u=user["user"]["id"], t=f"E{index}", c=datetime.fromisoformat(moment),
+        )
+    everything = _entries(harness, user["token"])
+    assert "nextCursor" not in everything and len(everything["entries"]) == 5  # sem parâmetros: igual à Parte 1
+
+    seen: list[str] = []
+    page = _entries(harness, user["token"], limit=2)
+    pages = 1
+    while "nextCursor" in page:
+        seen += [entry["id"] for entry in page["entries"]]
+        page = _entries(harness, user["token"], limit=2, cursor=page["nextCursor"])
+        pages += 1
+    seen += [entry["id"] for entry in page["entries"]]
+    assert pages == 3 and seen == [entry["id"] for entry in everything["entries"]]
+
+
+def test_devlog_default_page_is_capped(harness: Harness, user: dict) -> None:
+    harness.sql(
+        "INSERT INTO devlog_entries (id, user_id, title, content, tags, created_at)"
+        " SELECT gen_random_uuid(), :u, 'T' || n, 'conteúdo', '{}', now() - n * interval '1 minute' FROM generate_series(1, 105) n",
+        u=user["user"]["id"],
+    )
+    first = _entries(harness, user["token"])
+    assert len(first["entries"]) == 100 and "nextCursor" in first
+    assert len(_entries(harness, user["token"], cursor=first["nextCursor"])["entries"]) == 5
+
+
+@pytest.mark.parametrize("params, field", [({"limit": 0}, "limit"), ({"limit": 101}, "limit"), ({"cursor": "não-é-cursor"}, "cursor"), ({"cursor": "e30"}, "cursor")])
+def test_devlog_pagination_validation(harness: Harness, user: dict, params: dict, field: str) -> None:
+    response = harness.client.get("/api/devlog/entries", headers=harness.auth(user["token"]), params=params)
+    assert response.status_code == 400
+    assert field in response.json()["details"]["fieldErrors"]
+
+
+def test_devlog_cursor_never_reveals_other_users_entries(harness: Harness, user: dict) -> None:
+    other = harness.register(email="outra@patchnotes.dev")
+    for title in ("Primeira entrada", "Segunda entrada"):
+        harness.client.post("/api/devlog/entries", headers=harness.auth(other["token"]), json={"title": title, "content": "Conteúdo da outra conta."})
+    cursor = _entries(harness, other["token"], limit=1)["nextCursor"]
+    assert _entries(harness, user["token"], cursor=cursor) == {"entries": []}
+
+
+def test_devlog_and_profile_writes_are_rate_limited_per_user() -> None:
+    from tests.conftest import build_harness, make_settings
+
+    for harness in build_harness(make_settings(rate_limit_enabled=True)):
+        token = harness.register()["token"]
+        other = harness.register(email="outra@patchnotes.dev")["token"]
+        payload = {"title": "Entrada", "content": "Conteúdo longo o bastante."}
+        statuses = [harness.client.post("/api/devlog/entries", headers=harness.auth(token), json=payload).status_code for _ in range(31)]
+        assert statuses[:30] == [201] * 30 and statuses[30] == 429
+        assert harness.client.post("/api/devlog/entries", headers=harness.auth(other), json=payload).status_code == 201
+        patches = [harness.client.patch("/api/profile", headers=harness.auth(token), json={"bio": "x"}).status_code for _ in range(21)]
+        assert patches[:20] == [200] * 20 and patches[20] == 429
