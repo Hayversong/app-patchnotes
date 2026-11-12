@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:greeting": "node --test tests/getGreeting.test.cjs"
+    "test:greeting": "node --test tests/getGreeting.test.cjs",
+    "test:mocks": "bun test src/mocks"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

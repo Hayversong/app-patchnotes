@@ -37,7 +37,9 @@ O projeto está sendo desenvolvido com Next.js e possui uma API simulada para pe
 - React Hook Form e Zod para formulários e validações.
 - Axios para comunicação com a API.
 - Mock Service Worker (MSW) com endpoints simulados de autenticação, dashboard, devlog, chat e perfil.
-- Teste automatizado para a função de saudação.
+- Contratos da API documentados em [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md), fonte única para o backend da próxima etapa.
+- Cenários simulados reproduzíveis de sucesso, vazio, payload inválido (400), sessão expirada (401) e erro de servidor (500).
+- Testes automatizados para a função de saudação e para os handlers/contratos do MSW.
 
 ## O que será implementado
 
@@ -73,7 +75,25 @@ npm install
 npm run dev
 ```
 
-Depois, acesse [http://localhost:3000](http://localhost:3000).
+Depois, acesse [http://localhost:3000](http://localhost:3000) e entre com `hayverson@patchnotes.dev` / `patchnotes123` ou crie uma conta.
+
+### API simulada (MSW)
+
+Em desenvolvimento (`npm run dev`), o app só exibe as telas depois que o Mock Service Worker confirma que está interceptando as requisições. Se o worker não iniciar (por exemplo, sem `public/mockServiceWorker.js` ou com service workers bloqueados), aparece a tela "A API simulada não iniciou" com o motivo e o botão **Tentar novamente**; nenhuma chamada é feita sem mock. Para recriar o worker: `npx msw init public`.
+
+Os dados simulados ficam na memória da aba e são reiniciados ao recarregar a página.
+
+Para ver estados de erro e vazio, abra qualquer página com o parâmetro `mock`:
+
+```text
+/dashboard?mock=empty                       # todas as telas sem dados
+/dashboard?mock=dashboard:server-error      # erro 500 só no dashboard
+/chat?mock=chat:server-error                # histórico com erro e envio falhando
+/profile?mock=profile:invalid-payload       # salvar perfil retorna 400
+/dashboard?mock=dashboard:unauthorized      # 401: sessão encerrada e volta ao login
+```
+
+Um aviso no topo indica o cenário ativo e permite limpá-lo. Detalhes em [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md#cenários-simulados-somente-msw-desenvolvimento).
 
 ### Outros comandos
 
@@ -81,16 +101,19 @@ Depois, acesse [http://localhost:3000](http://localhost:3000).
 npm run build          # gera a build de produção
 npm start              # inicia a aplicação em produção
 npm run test:greeting  # executa os testes da saudação
+npm run test:mocks     # testa handlers e contratos do MSW (requer Bun)
 ```
 
 ## Estrutura principal
 
 ```text
+docs/
+└── API_CONTRACTS.md     # contratos HTTP (endpoints, payloads, erros)
 src/
 ├── app/                 # rotas e layouts do Next.js
 ├── components/          # componentes compartilhados da interface
 ├── lib/                 # clientes, utilitários e configurações
-├── mocks/               # handlers e inicialização do MSW
+├── mocks/               # handlers, cenários simulados e inicialização do MSW
 ├── modules/             # funcionalidades organizadas por domínio
 ├── providers/           # providers globais
 └── store/               # estados globais com Zustand
