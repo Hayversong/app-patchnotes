@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from "msw";
 import { z } from "zod";
 
-import type { AuthResponse, CurrentUserResponse, LoginRequest, RegisterRequest, User } from "@/modules/auth/types/auth.types";
+import type { AuthResponse, CurrentUserResponse, LoginRequest, MessageResponse, RegisterRequest, User } from "@/modules/auth/types/auth.types";
 import type { ChatMessage, GetChatHistoryResponse, SendChatRequest, SendChatResponse } from "@/modules/chat/types/chat.types";
 import type { ActivityHeatmapResponse, DashboardMetrics, EntriesByTagResponse, TokenUsageResponse } from "@/modules/dashboard/types/dashboard.types";
 import type { CreateDevlogRequest, CreateDevlogResponse, DevlogEntriesResponse, DevlogEntry } from "@/modules/devlog/types/devlog.types";
@@ -24,6 +24,8 @@ const LoginBodySchema = z.object({ email: z.string().email(), password: z.string
 const RegisterBodySchema = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8) });
 const DevlogBodySchema = z.object({ title: z.string().min(3), content: z.string().min(10), tags: z.array(z.string().min(1)).optional() });
 const ChatBodySchema = z.object({ message: z.string().min(1).max(2000), context: z.string().optional() });
+const ForgotPasswordBodySchema = z.object({ email: z.string().email() });
+const ResetPasswordBodySchema = z.object({ token: z.string().min(20), password: z.string().min(8).max(128) });
 const ProfileBodySchema = z.object({ name: z.string().min(2).optional(), bio: z.string().max(240).optional(), avatarUrl: optionalUrl.optional(), githubUrl: optionalUrl.optional() });
 
 function errorResponse(status: number, body: ApiErrorResponse): Response {
@@ -101,6 +103,10 @@ let entries: DevlogEntry[] = [
   },
 ];
 
+/** Token de redefinição aceito pelo mock (o backend real envia um token aleatório por e-mail). */
+export const MOCK_RESET_TOKEN = "token-de-redefinicao-do-mock-0001";
+const FORGOT_PASSWORD_MESSAGE = "Se o e-mail estiver cadastrado, você receberá as instruções para redefinir a senha.";
+
 let tokensUsed = 12480;
 const messageStore: ChatMessage[] = [];
 
@@ -141,6 +147,44 @@ export const handlers = [
     users.push(user);
     profiles.set(user.id, publicUser(user));
     return HttpResponse.json<AuthResponse>({ user: publicUser(user), token: `mock-token-${user.id}` }, { status: 201 });
+  }),
+
+  // O mock não mantém refresh tokens: o refresh sempre falha (401) e a sessão expira como antes.
+  http.post(`${API}/auth/refresh`, async ({ request }) => {
+    await delay(200);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
+    return unauthorized();
+  }),
+
+  http.post(`${API}/auth/logout`, async ({ request }) => {
+    await delay(150);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post(`${API}/auth/forgot-password`, async ({ request }) => {
+    await delay(500);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
+    const parsed = ForgotPasswordBodySchema.safeParse(await readJson(request));
+    if (!parsed.success) return invalidPayload(parsed.error);
+    // Mesma resposta exista ou não a conta (não revela cadastros).
+    return HttpResponse.json<MessageResponse>({ message: FORGOT_PASSWORD_MESSAGE }, { status: 202 });
+  }),
+
+  http.post(`${API}/auth/reset-password`, async ({ request }) => {
+    await delay(500);
+    const forced = forcedScenario(request, "mutation");
+    if (forced) return forced;
+    const parsed = ResetPasswordBodySchema.safeParse(await readJson(request));
+    if (!parsed.success) return invalidPayload(parsed.error);
+    if (parsed.data.token !== MOCK_RESET_TOKEN) {
+      return errorResponse(400, { message: "Link de redefinição inválido ou expirado. Solicite um novo." });
+    }
+    users[0].password = parsed.data.password;
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.get(`${API}/auth/me`, async ({ request }) => {

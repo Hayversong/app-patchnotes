@@ -1,3 +1,4 @@
+import { refreshAccessToken } from "@/lib/axios";
 import type { ChatSocketServerEvent, SendChatRequest, SendChatResponse } from "@/modules/chat/types/chat.types";
 import { useAuthStore } from "@/store/authStore";
 
@@ -43,6 +44,18 @@ export class ChatSocket {
 
   async send(request: SendChatRequest, onToken?: (content: string) => void): Promise<SendChatResponse> {
     if (this.pending) throw new ChatStreamError("busy", "Aguarde a resposta atual terminar.");
+    try {
+      return await this.sendOnce(request, onToken);
+    } catch (error) {
+      // Token expirado: o servidor recusa ANTES de processar a mensagem, então renovar e reenviar é seguro.
+      if (!(error instanceof ChatStreamError) || error.code !== "unauthorized") throw error;
+      const token = await refreshAccessToken(); // se falhar, a sessão é encerrada e o app volta ao login
+      if (!token) throw error;
+      return this.sendOnce(request, onToken);
+    }
+  }
+
+  private async sendOnce(request: SendChatRequest, onToken?: (content: string) => void): Promise<SendChatResponse> {
     const socket = await this.connect();
     return new Promise<SendChatResponse>((resolve, reject) => {
       this.pending = { onToken, resolve, reject };
@@ -88,8 +101,7 @@ export class ChatSocket {
         if (this.socket === socket) this.socket = null;
         this.connecting = null;
         if (event.code === CLOSE_UNAUTHORIZED) {
-          // Mesmo tratamento de um 401 da API: encerra a sessão e o app volta ao login.
-          if (useAuthStore.getState().token) useAuthStore.getState().clearSession({ expired: true });
+          // Quem chamou send() tenta renovar o token; se não der, a sessão é encerrada lá.
           const error = new ChatStreamError("unauthorized", "Sessão inválida ou expirada. Entre novamente.");
           if (!ready) reject(error);
           this.settle(error);

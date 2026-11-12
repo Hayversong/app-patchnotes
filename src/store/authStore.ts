@@ -3,6 +3,9 @@ import { create } from "zustand";
 import type { User } from "@/modules/auth/types/auth.types";
 
 const TOKEN_COOKIE = "patchnotes_token";
+// Igual à validade do refresh token (REFRESH_TOKEN_TTL_DAYS no backend): o access token pode expirar antes,
+// mas a sessão é renovada automaticamente enquanto o refresh for válido.
+const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 function readTokenCookie(): string | null {
   if (typeof document === "undefined") return null;
@@ -26,7 +29,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: readTokenCookie(),
   sessionExpired: false,
   setSession: (user, token) => {
-    document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=86400; samesite=lax`;
+    document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${SESSION_MAX_AGE_SECONDS}; samesite=lax`;
     set({ user, token, sessionExpired: false });
   },
   setUser: (user) => set({ user }),

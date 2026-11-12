@@ -14,7 +14,7 @@ import { ErrorState } from "@/components/ui/feedback";
 import { Avatar } from "@/components/ui/avatar";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useCurrentUserQuery } from "@/modules/auth/hooks/use-auth";
+import { useCurrentUserQuery, useLogout } from "@/modules/auth/hooks/use-auth";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStore";
 
@@ -31,7 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((state) => state.token);
   const storedUser = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
-  const clearSession = useAuthStore((state) => state.clearSession);
+  const endSession = useLogout();
   const currentUser = useCurrentUserQuery();
   const user = storedUser ?? currentUser.data;
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [router, token]);
 
   function logout() {
-    clearSession();
+    endSession();
     router.replace("/login");
   }
 
