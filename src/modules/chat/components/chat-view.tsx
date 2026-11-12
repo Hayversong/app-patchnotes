@@ -13,7 +13,8 @@ import { EmptyState, ErrorState, Feedback, LoadingState } from "@/components/ui/
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formOptions } from "@/lib/form-options";
-import { useChatHistory, useSendChatMessage } from "@/modules/chat/hooks/use-chat";
+import { isChatStreaming, useChatHistory, useSendChatMessage } from "@/modules/chat/hooks/use-chat";
+import { ChatStreamError } from "@/modules/chat/services/chat-socket";
 import { chatSchema, type ChatFormData } from "@/modules/chat/schemas/chat.schema";
 import type { ChatMessage } from "@/modules/chat/types/chat.types";
 
@@ -38,12 +39,12 @@ function AssistantText({ content, onComplete }: { content: string; onComplete?: 
   return <p className="whitespace-pre-wrap break-words" aria-label={content} onClick={() => setVisibleWords(words.length)} title={complete ? undefined : "Clique para mostrar a resposta completa"}>{complete ? content : words.slice(0, visibleWords).join("")}</p>;
 }
 
-function MessageBubble({ message, onTypingComplete }: { message: ChatMessage; onTypingComplete?: () => void }) {
+function MessageBubble({ message, onTypingComplete, typing = true }: { message: ChatMessage; onTypingComplete?: () => void; typing?: boolean }) {
   const reduced = useReducedMotion();
   return <motion.article layout="position" initial={reduced ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }} aria-label={message.role === "user" ? "Você" : "Assistente"} className={cn("flex gap-3 will-change-[opacity,transform]", message.role === "user" && "justify-end")}>
     {message.role === "assistant" && <Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" />}
     <div className={cn("min-w-0 max-w-2xl rounded-xl border px-4 py-3 text-sm leading-6", message.role === "assistant" ? "border-zinc-800 bg-zinc-950" : "border-lime-400/30 bg-lime-400/10")}>
-      {message.role === "assistant" ? <AssistantText content={message.content} onComplete={onTypingComplete} /> : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
+      {message.role === "assistant" && typing ? <AssistantText content={message.content} onComplete={onTypingComplete} /> : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
     </div>
     {message.role === "user" && <UserRound aria-hidden="true" className="mt-1 size-5 shrink-0 text-zinc-400" />}
   </motion.article>;
@@ -51,30 +52,54 @@ function MessageBubble({ message, onTypingComplete }: { message: ChatMessage; on
 
 export function ChatView() {
   const [serverError, setServerError] = useState<string | null>(null);
+  // Pergunta enviada e resposta parcial enquanto o WebSocket transmite (somem quando o histórico atualiza).
+  const [streaming, setStreaming] = useState<{ question: string; answer: string; answerId?: string } | null>(null);
+  // Respostas já mostradas via streaming não repetem a animação de digitação.
+  const [streamedIds, setStreamedIds] = useState<ReadonlySet<string>>(() => new Set());
   const chatHistory = useChatHistory();
   const sendMessage = useSendChatMessage();
   const reduced = useReducedMotion();
-  const endRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const { register, handleSubmit, reset, setFocus, formState: { errors, touchedFields, isSubmitted } } = useForm<ChatFormData>({ ...formOptions, resolver: zodResolver(chatSchema), defaultValues: { message: "" } });
 
   const updateNearBottom = useCallback(() => { nearBottomRef.current = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160; }, []);
-  const scrollToEnd = useCallback(() => { if (nearBottomRef.current) endRef.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" }); }, [reduced]);
+  // Rola a página até o fim (e não só até o fim da lista), senão a última mensagem fica atrás do formulário fixo.
+  const scrollToEnd = useCallback((instant = false) => { if (nearBottomRef.current) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: reduced || instant ? "auto" : "smooth" }); }, [reduced]);
 
   useEffect(() => { updateNearBottom(); window.addEventListener("scroll", updateNearBottom, { passive: true }); return () => window.removeEventListener("scroll", updateNearBottom); }, [updateNearBottom]);
   const messages = useMemo(() => chatHistory.data?.messages ?? [], [chatHistory.data?.messages]);
-  useEffect(() => { requestAnimationFrame(scrollToEnd); }, [messages, scrollToEnd, sendMessage.isPending]);
+  // Mensagens que já existiam ao abrir a tela aparecem prontas; só respostas novas fazem a animação de digitação.
+  const initialIdsRef = useRef<ReadonlySet<string> | null>(null);
+  if (initialIdsRef.current === null && chatHistory.data) initialIdsRef.current = new Set(chatHistory.data.messages.map((item) => item.id));
+  // Bolhas temporárias do streaming saem no mesmo render em que a resposta entra no histórico.
+  const showStreaming = streaming !== null && !(streaming.answerId && messages.some((item) => item.id === streaming.answerId));
+  const followEnd = useCallback(() => scrollToEnd(), [scrollToEnd]);
+  useEffect(() => { requestAnimationFrame(followEnd); }, [messages, followEnd, sendMessage.isPending]);
+  useEffect(() => { if (streaming?.answer) requestAnimationFrame(() => scrollToEnd(true)); }, [streaming?.answer, scrollToEnd]);
 
   const onSubmit = handleSubmit(async ({ message }) => {
     if (sendMessage.isPending) return;
     setServerError(null);
-    const shouldFollow = nearBottomRef.current;
-    nearBottomRef.current = shouldFollow;
+    // Quem acabou de enviar quer ver a resposta: salta para o fim (instantâneo, para o listener de scroll
+    // não interpretar posições intermediárias de uma rolagem suave como "a pessoa subiu a conversa").
+    nearBottomRef.current = true;
+    scrollToEnd(true);
+    if (isChatStreaming) setStreaming({ question: message, answer: "" });
     try {
-      await sendMessage.mutateAsync({ message });
+      await sendMessage.mutateAsync({
+        message,
+        onToken: (content) => setStreaming((current) => current && { ...current, answer: current.answer + content }),
+        onComplete: (answer) => {
+          if (!isChatStreaming) return;
+          setStreamedIds((ids) => new Set(ids).add(answer.id));
+          setStreaming((current) => current && { ...current, answerId: answer.id });
+        },
+      });
       reset();
     } catch (error) {
-      setServerError(getApiErrorMessage(error, "Não foi possível enviar a mensagem. Seu texto foi mantido; tente novamente."));
+      setServerError(error instanceof ChatStreamError ? error.message : getApiErrorMessage(error, "Não foi possível enviar a mensagem. Seu texto foi mantido; tente novamente."));
+    } finally {
+      setStreaming(null);
     }
     requestAnimationFrame(() => setFocus("message"));
   });
@@ -85,11 +110,17 @@ export function ChatView() {
       {chatHistory.isLoading && <LoadingState label="Carregando conversa..." />}
       {chatHistory.isError && <ErrorState message="Não foi possível carregar o histórico da conversa." hint="Você ainda pode enviar novas mensagens. Tente recarregar o histórico." pending={chatHistory.isFetching} retry={() => void chatHistory.refetch()} />}
       {!chatHistory.isLoading && !chatHistory.isError && messages.length === 0 && <EmptyState title="Comece uma conversa"><p>Peça ajuda com uma mecânica, organize decisões ou transforme seu progresso em notas de atualização.</p></EmptyState>}
-      {messages.map((message) => <MessageBubble key={message.id} message={message} onTypingComplete={scrollToEnd} />)}
+      {messages.map((message) => <MessageBubble key={message.id} message={message} onTypingComplete={followEnd} typing={!streamedIds.has(message.id) && !initialIdsRef.current?.has(message.id)} />)}
+      {showStreaming && <article aria-label="Você" className="flex justify-end gap-3"><div className="min-w-0 max-w-2xl rounded-xl border border-lime-400/30 bg-lime-400/10 px-4 py-3 text-sm leading-6"><p className="whitespace-pre-wrap break-words">{streaming.question}</p></div><UserRound aria-hidden="true" className="mt-1 size-5 shrink-0 text-zinc-400" /></article>}
+      {showStreaming && streaming.answer && <article aria-label="Assistente respondendo" aria-busy="true" className="flex gap-3">
+        <Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" />
+        {/* Texto parcial oculto de leitores de tela: a resposta completa é anunciada quando entra no histórico. */}
+        <div aria-hidden="true" className="min-w-0 max-w-2xl rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm leading-6"><p className="whitespace-pre-wrap break-words">{streaming.answer}<span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 bg-lime-400 motion-safe:animate-pulse" /></p></div>
+        <span className="sr-only" role="status">Assistente respondendo...</span>
+      </article>}
       <AnimatePresence initial={false}>
-        {sendMessage.isPending && <motion.article key="processing" role="status" aria-label="Assistente processando" className="flex gap-3" initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: reduced ? 0 : 0.15 }}><Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" /><div className="flex h-12 items-center rounded-xl border border-zinc-800 bg-zinc-950 px-4"><TypingDots /></div></motion.article>}
+        {sendMessage.isPending && !streaming?.answer && <motion.article key="processing" role="status" aria-label="Assistente processando" className="flex gap-3" initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: reduced ? 0 : 0.15 }}><Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" /><div className="flex h-12 items-center rounded-xl border border-zinc-800 bg-zinc-950 px-4"><TypingDots /></div></motion.article>}
       </AnimatePresence>
-      <div ref={endRef} />
     </section>
     <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={sendMessage.isPending} className="sticky bottom-0 mt-6 space-y-3 border-t border-zinc-800 bg-background py-4" noValidate>
       <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} disabled={sendMessage.isPending} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={touchedFields.message || isSubmitted ? errors.message?.message : undefined} {...register("message")} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!sendMessage.isPending) event.currentTarget.form?.requestSubmit(); } }} />
