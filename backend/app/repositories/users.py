@@ -22,11 +22,21 @@ async def create(session: AsyncSession, *, name: str, email: str, password_hash:
     return user
 
 
-async def update_fields(session: AsyncSession, user: User, values: dict[str, str]) -> User:
-    for field, value in values.items():
-        setattr(user, field, value)
-    await session.flush()
-    return user
+# Únicas colunas que a atualização de perfil pode gravar. Senha, e-mail e versão de sessão ficam de fora.
+PROFILE_COLUMNS = frozenset({"name", "bio", "avatar_url", "github_url"})
+
+
+async def update_profile_fields(session: AsyncSession, user_id: uuid.UUID, values: dict[str, str]) -> User | None:
+    """UPDATE só das colunas de perfil, lendo o estado atual do banco (RETURNING).
+
+    Nunca regrava colunas que não foram enviadas: uma redefinição de senha concorrente não é desfeita.
+    """
+    unknown = set(values) - PROFILE_COLUMNS
+    if unknown:
+        raise ValueError(f"colunas não permitidas no perfil: {sorted(unknown)}")
+    statement = update(User).where(User.id == user_id).values(**values).returning(User)
+    result = await session.execute(statement, execution_options={"populate_existing": True})
+    return result.scalar_one_or_none()
 
 
 async def set_password(session: AsyncSession, user_id: uuid.UUID, password_hash: str, tokens_valid_after: datetime) -> None:

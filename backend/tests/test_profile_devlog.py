@@ -87,3 +87,34 @@ def test_users_only_see_their_own_data(harness: Harness, user: dict) -> None:
     harness.client.post("/api/devlog/entries", headers=harness.auth(user["token"]), json={"title": "Privado", "content": "Somente da primeira pessoa."})
     assert harness.client.get("/api/devlog/entries", headers=harness.auth(other["token"])).json() == {"entries": []}
     assert harness.client.get("/api/dashboard/metrics", headers=harness.auth(other["token"])).json()["totalEntries"] == 0
+
+
+def test_profile_update_does_not_undo_concurrent_password_reset(harness: Harness, user: dict) -> None:
+    """S1: a redefinição de senha conclui ENTRE a autenticação do PATCH e a gravação do perfil.
+    Antes, o merge do objeto antigo regravava o hash anterior e reabria as sessões antigas."""
+    from app.routers.deps import get_current_user
+    from app.services import auth_service
+
+    old_token = user["token"]
+    harness.client.post("/api/auth/forgot-password", json={"email": "pessoa@patchnotes.dev"})
+    reset_token = harness.mailer.sent[-1]["body"].split("#token=")[1].split()[0]
+    app = harness.client.app
+
+    async def stale_user_then_concurrent_reset():  # type: ignore[no-untyped-def]
+        sessionmaker = app.state.sessionmaker
+        async with sessionmaker() as session:
+            stale, _ = await auth_service.authenticate_access_token(session, harness.settings, old_token)
+        async with sessionmaker() as session, session.begin():
+            await auth_service.reset_password(session, token=reset_token, password="senha-nova-123")
+        return stale
+
+    app.dependency_overrides[get_current_user] = stale_user_then_concurrent_reset
+    try:
+        response = harness.client.patch("/api/profile", headers=harness.auth(old_token), json={"bio": "Atualizado na corrida"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200 and response.json()["user"]["bio"] == "Atualizado na corrida"
+
+    login = lambda password: harness.client.post("/api/auth/login", json={"email": "pessoa@patchnotes.dev", "password": password})  # noqa: E731
+    assert login("senha-segura-1").status_code == 401, "a senha antiga não pode voltar a valer"
+    assert login("senha-nova-123").status_code == 200

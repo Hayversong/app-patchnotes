@@ -14,7 +14,5 @@ async def get_profile(user: CurrentUser) -> ProfileResponse:
 
 @router.patch("", response_model=ProfileResponse, response_model_exclude_none=True)
 async def update_profile(body: UpdateProfileRequest, user: CurrentUser, session: SessionDep) -> ProfileResponse:
-    # O usuário veio de outra sessão; mescla nesta para gravar a alteração.
-    attached = await session.merge(user)
-    updated = await profile_service.update_profile(session, attached, body)
+    updated = await profile_service.update_profile(session, user.id, body)
     return ProfileResponse(user=ProfileOut.model_validate(updated, from_attributes=True))
