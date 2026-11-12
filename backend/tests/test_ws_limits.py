@@ -83,7 +83,8 @@ def test_connection_closes_when_access_token_expires_while_idle() -> None:
         user = harness.register()
         now = int(time.time())
         short = jwt.encode(
-            {"sub": user["user"]["id"], "type": "access", "sv": 0, "iat": now, "exp": now + 1},
+            # exp em segundos inteiros: +2 garante entre 1 e 2 s de validade (com +1 o token podia nascer vencido).
+            {"sub": user["user"]["id"], "type": "access", "sv": 0, "iat": now, "exp": now + 2},
             harness.settings.jwt_secret.get_secret_value(), algorithm="HS256",
         )
         with connect(harness) as ws:
@@ -93,7 +94,7 @@ def test_connection_closes_when_access_token_expires_while_idle() -> None:
             with pytest.raises(WebSocketDisconnect) as closed:
                 ws.receive_json()
             assert closed.value.code == 4401
-            assert time.monotonic() - started < 3
+            assert time.monotonic() - started < 4
 
 
 def test_disconnect_during_generation_releases_slots() -> None:
