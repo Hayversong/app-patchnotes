@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=15, ge=1)
     refresh_token_ttl_days: int = Field(default=7, ge=1)
     refresh_cookie_name: str = "patchnotes_refresh"
+    # Access token em cookie HttpOnly (JavaScript não lê). O header Authorization continua aceito (Swagger, scripts).
+    access_cookie_name: str = "patchnotes_access"
     cookie_secure: bool = False
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     # Proxies reversos confiáveis (IPs ou redes CIDR, separados por vírgula). Só conexões vindas deles têm o
@@ -40,6 +42,8 @@ class Settings(BaseSettings):
     max_request_body_bytes: int = Field(default=64 * 1024, ge=1024)
 
     password_reset_ttl_minutes: int = Field(default=30, ge=5, le=24 * 60)
+    # Validade do link de confirmação de cadastro.
+    email_verification_ttl_minutes: int = Field(default=24 * 60, ge=10, le=7 * 24 * 60)
     frontend_url: str = "http://localhost:3000"
     smtp_host: str = "127.0.0.1"
     smtp_port: int = 1025

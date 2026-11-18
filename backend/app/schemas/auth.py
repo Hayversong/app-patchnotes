@@ -34,8 +34,13 @@ class UserOut(ApiModel):
 
 
 class AuthResponse(ApiModel):
+    """O access token vai num cookie HttpOnly (patchnotes_access), não no corpo: JavaScript não consegue lê-lo."""
+
     user: UserOut
-    token: str
+
+
+class VerifyEmailRequest(ApiModel):
+    token: str = Field(min_length=20, max_length=200)
 
 
 class CurrentUserResponse(ApiModel):

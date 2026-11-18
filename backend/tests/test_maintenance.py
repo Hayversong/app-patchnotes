@@ -57,3 +57,16 @@ def test_cleanup_is_skipped_while_another_replica_holds_the_lock(harness: Harnes
 
     assert harness.run(scenario) == (True, 0)
     assert harness.run(lambda: run_cleanup(engine, harness.settings, batch=2, pause=0)).skipped is False
+
+
+def test_cleanup_removes_only_expired_pending_registrations(harness: Harness) -> None:
+    for email in ("velho@patchnotes.dev", "novo@patchnotes.dev"):
+        harness.client.post("/api/auth/register", json={"name": "Pedido", "email": email, "password": "senha-segura-1"})
+    harness.sql("UPDATE pending_registrations SET expires_at = now() - interval '3 days' WHERE email = 'velho@patchnotes.dev'")
+
+    async def go() -> int:
+        report = await run_cleanup(harness.client.app.state.engine, harness.settings)  # type: ignore[attr-defined]
+        return report.pending_registrations
+
+    assert harness.run(go) == 1
+    assert [row.email for row in harness.sql("SELECT email FROM pending_registrations")] == ["novo@patchnotes.dev"]

@@ -24,7 +24,8 @@ async def main() -> None:
         return
     print(
         f"Limpeza concluída: {report.refresh_tokens} refresh tokens, {report.reset_tokens} tokens de redefinição, "
-        f"{report.orphan_messages} pedidos de chat órfãos marcados como falha."
+        f"{report.orphan_messages} pedidos de chat órfãos marcados como falha, "
+        f"{report.pending_registrations} cadastros não confirmados."
     )
 
 

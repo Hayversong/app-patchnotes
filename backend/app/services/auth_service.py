@@ -20,12 +20,15 @@ from app.core.security import (
     verify_password,
 )
 from app.models import User
+from app.repositories import registrations as registration_repo
 from app.repositories import tokens as token_repo
 from app.repositories import users as user_repo
 from app.services.email_service import Mailer, send_safely
 
 INVALID_CREDENTIALS = "E-mail ou senha inválidos"
-EMAIL_TAKEN = "Este e-mail já está cadastrado"
+INVALID_VERIFICATION_TOKEN = "Link de confirmação inválido ou expirado. Faça o cadastro de novo."
+VERIFY_EMAIL_SUBJECT = "Confirme seu cadastro — Patchnotes"
+ALREADY_REGISTERED_SUBJECT = "Tentativa de cadastro com seu e-mail — Patchnotes"
 INVALID_RESET_TOKEN = "Link de redefinição inválido ou expirado. Solicite um novo."
 RESET_EMAIL_SUBJECT = "Redefinição de senha — Patchnotes"
 
@@ -55,17 +58,70 @@ async def _issue(session: AsyncSession, settings: Settings, user: User, family_i
     return IssuedSession(user, create_access_token(user.id, user.session_version, settings), raw_refresh), stored.id
 
 
-async def register(session: AsyncSession, settings: Settings, *, name: str, email: str, password: str) -> IssuedSession:
+async def request_registration(session: AsyncSession, settings: Settings, *, name: str, email: str, password_hash: str) -> tuple[str, str | None]:
+    """Grava o pedido de cadastro. Retorna ("new", token) para e-mail livre ou ("existing", None) se já há conta."""
     if await user_repo.get_by_email(session, email):
-        raise ApiError(409, EMAIL_TAKEN)
-    password_hash = await run_in_threadpool(hash_password, password)
+        return "existing", None
+    raw = new_opaque_token()
+    await registration_repo.upsert(
+        session, email=email, name=name, password_hash=password_hash, token_hash=hash_opaque_token(raw),
+        expires_at=_now() + timedelta(minutes=settings.email_verification_ttl_minutes),
+    )
+    return "new", raw
+
+
+async def process_registration_request(
+    sessionmaker: async_sessionmaker[AsyncSession], mailer: Mailer, settings: Settings, *, name: str, email: str, password: str
+) -> None:
+    """Executada DEPOIS da resposta 202, como na recuperação de senha: a resposta e o tempo dela são os mesmos
+    exista ou não a conta. O hash da senha (caro) também fica aqui, fora do tempo de resposta."""
+    try:
+        password_hash = await run_in_threadpool(hash_password, password)
+        async with sessionmaker() as session, session.begin():
+            outcome, raw_token = await request_registration(session, settings, name=name, email=email, password_hash=password_hash)
+    except Exception as error:  # noqa: BLE001 — tarefa de fundo não pode derrubar o servidor
+        logger.error("Falha ao registrar o pedido de cadastro: %s", type(error).__name__)
+        return
+    if outcome == "existing":
+        await send_safely(mailer, to=email, subject=ALREADY_REGISTERED_SUBJECT, body=already_registered_body(settings))
+    elif raw_token:
+        await send_safely(mailer, to=email, subject=VERIFY_EMAIL_SUBJECT, body=verify_email_body(settings, name, raw_token))
+
+
+async def verify_email(session: AsyncSession, settings: Settings, token: str) -> IssuedSession:
+    """Confirma o cadastro: consome o pedido (uso único), cria a conta e abre a sessão."""
+    pending = await registration_repo.consume(session, hash_opaque_token(token), _now())
+    if pending is None:
+        raise ApiError(400, INVALID_VERIFICATION_TOKEN)
     try:
         async with session.begin_nested():
-            user = await user_repo.create(session, name=name, email=email, password_hash=password_hash)
-    except IntegrityError as error:  # cadastro simultâneo com o mesmo e-mail
-        raise ApiError(409, EMAIL_TAKEN) from error
+            user = await user_repo.create(session, name=pending.name, email=pending.email, password_hash=pending.password_hash)
+    except IntegrityError as error:  # a conta surgiu por outro caminho enquanto o link esperava
+        raise ApiError(400, INVALID_VERIFICATION_TOKEN) from error
     issued, _ = await _issue(session, settings, user)
     return issued
+
+
+def verify_email_body(settings: Settings, name: str, raw_token: str) -> str:
+    link = f"{settings.frontend_url.rstrip('/')}/verify-email#token={raw_token}"
+    hours = settings.email_verification_ttl_minutes // 60
+    return (
+        f"Olá, {name}!\n\n"
+        "Para terminar o cadastro no Patchnotes, abra o link abaixo"
+        f"{f' em até {hours} horas' if hours else ''} (ele só pode ser usado uma vez):\n\n"
+        f"{link}\n\n"
+        "Se você não pediu este cadastro, ignore este e-mail: nenhuma conta será criada.\n"
+    )
+
+
+def already_registered_body(settings: Settings) -> str:
+    base = settings.frontend_url.rstrip("/")
+    return (
+        "Olá!\n\n"
+        "Alguém tentou criar uma conta no Patchnotes com este e-mail, mas ele já tem cadastro.\n\n"
+        f"Se foi você, entre em {base}/login. Esqueceu a senha? Redefina em {base}/forgot-password.\n\n"
+        "Se não foi você, ignore este e-mail: sua conta continua igual.\n"
+    )
 
 
 async def login(session: AsyncSession, settings: Settings, *, email: str, password: str) -> IssuedSession:

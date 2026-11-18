@@ -2,12 +2,15 @@ from tests.conftest import Harness
 
 
 def test_token_responses_are_never_cached(harness: Harness) -> None:
+    registered = harness.client.post("/api/auth/register", json={"name": "Cache", "email": "cache@patchnotes.dev", "password": "senha-segura-1"})
+    verified = harness.client.post("/api/auth/verify-email", json={"token": harness.verification_token("cache@patchnotes.dev")})
     for response in (
-        harness.client.post("/api/auth/register", json={"name": "Cache", "email": "cache@patchnotes.dev", "password": "senha-segura-1"}),
+        registered,
+        verified,
         harness.client.post("/api/auth/login", json={"email": "cache@patchnotes.dev", "password": "senha-segura-1"}),
         harness.client.post("/api/auth/refresh"),
     ):
-        assert response.status_code in (200, 201), response.text
+        assert response.status_code in (200, 202), response.text
         assert response.headers["cache-control"] == "no-store"
 
 
