@@ -90,6 +90,11 @@ def create_app(
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api")
+
+    @api.get("/health", tags=["health"], summary="Verificação de saúde (usada pelo Docker)")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
     for module in (auth, profile, devlog, chat, dashboard, tokens):
         api.include_router(module.router)
     app.include_router(api)

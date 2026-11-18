@@ -82,3 +82,7 @@ def test_swagger_lists_every_endpoint(harness: Harness) -> None:
 def test_swagger_is_off_in_production_unless_enabled() -> None:
     assert make_settings(environment="production", jwt_secret="x" * 40, cookie_secure=True, cors_origins=["https://app.dev"], redis_url="redis://r:6379/0").api_docs_enabled is False
     assert make_settings(environment="production", jwt_secret="x" * 40, cookie_secure=True, cors_origins=["https://app.dev"], redis_url="redis://r:6379/0", api_docs=True).api_docs_enabled is True
+
+
+def test_health_endpoint_is_public(harness: Harness) -> None:
+    assert harness.client.get("/api/health").json() == {"status": "ok"}
