@@ -29,7 +29,7 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
-// Todas as páginas (para a CSP); ficam de fora a API, os arquivos estáticos e o service worker do MSW.
+// Todas as páginas (para a CSP); ficam de fora a API e os arquivos estáticos.
 export const config = {
-  matcher: ["/((?!api/|_next/static|_next/image|favicon.ico|mockServiceWorker.js).*)"],
+  matcher: ["/((?!api/|_next/static|_next/image|favicon.ico).*)"],
 };
