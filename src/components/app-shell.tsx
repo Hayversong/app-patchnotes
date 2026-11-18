@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, ChevronLeft, ChevronRight, Cpu, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import { BookOpenText, ChevronLeft, ChevronRight, Coins, Cpu, LayoutDashboard, LogOut, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -22,6 +22,7 @@ const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Assistente", icon: Cpu },
   { href: "/devlog", label: "Devlog", icon: BookOpenText },
+  { href: "/tokens", label: "Tokens", icon: Coins },
   { href: "/profile", label: "Perfil", icon: UserRound },
 ];
 

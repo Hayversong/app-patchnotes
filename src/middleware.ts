@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { NONCE_HEADER, buildContentSecurityPolicy, createNonce } from "@/lib/security-headers";
 
-const protectedRoutes = ["/dashboard", "/chat", "/devlog", "/profile"];
+const protectedRoutes = ["/dashboard", "/chat", "/devlog", "/tokens", "/profile"];
 const authRoutes = ["/login", "/register"];
 
 export function middleware(request: NextRequest) {

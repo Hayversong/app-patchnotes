@@ -11,11 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDashboardMetrics } from "@/modules/dashboard/hooks/use-dashboard";
 import { useDevlogEntries } from "@/modules/devlog/hooks/use-devlog";
+import { useTokenBalance } from "@/modules/tokens/hooks/use-tokens";
 import { ActivityHeatmap, EntriesByTagChart, TokenUsageChart } from "./dashboard-charts";
 
 export function DashboardView() {
   const metrics = useDashboardMetrics();
   const entries = useDevlogEntries();
+  const balance = useTokenBalance();
 
   const heading = <DashboardHeading streak={metrics.data?.streak} />;
   if (metrics.isLoading || entries.isLoading) return <div className="space-y-8">{heading}<LoadingState label="Carregando seu resumo..." /></div>;
@@ -43,7 +45,7 @@ export function DashboardView() {
               <p className="mt-4 break-words font-mono text-2xl font-semibold tracking-tight tabular-nums">
                 {animated && typeof value === "number" ? <AnimatedNumber value={value} format="number" /> : value}
               </p>
-              {label === "Tokens consumidos" && <p className="mt-3 text-xs leading-5 text-muted-foreground">Tokens: unidades de texto processadas.</p>}
+              {label === "Tokens consumidos" && <p className="mt-3 text-xs leading-5 text-muted-foreground">{balance.data ? <>Saldo do mês: <span className="font-mono text-foreground">{balance.data.balance.toLocaleString("pt-BR")}</span> · <Link href="/tokens" className="text-lime-400 hover:text-lime-300">ver tokens</Link></> : "Tokens: unidades de texto processadas."}</p>}
             </CardContent>
           </Card>
         ))}
