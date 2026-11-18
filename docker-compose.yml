@@ -1,0 +1,106 @@
+# Ambiente completo do Patchnotes: frontend, API, PostgreSQL, Redis, Ollama (LLM) e Mailpit.
+#
+#   cp .env.example .env      # ajuste JWT_SECRET e a senha do banco
+#   docker compose up --build
+#
+# Frontend: http://localhost:3000 · Swagger: http://localhost:8000/docs · E-mails: http://localhost:8025
+# Na primeira subida o serviço ollama-pull baixa o modelo (~2 GB); o chat responde depois que ele terminar.
+# Portas presas a 127.0.0.1. Não rode junto com backend/docker-compose.yml (mesmas portas).
+name: patchnotes-stack
+
+x-db-env: &db-env
+  POSTGRES_USER: ${POSTGRES_USER:-patchnotes}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env (veja .env.example)}
+  POSTGRES_DB: ${POSTGRES_DB:-patchnotes}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: *db-env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-ttl"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  ollama:
+    image: ollama/ollama:0.40.16
+    volumes:
+      - ollama-models:/root/.ollama
+    # Com GPU NVIDIA (nvidia-container-toolkit instalado), descomente:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Baixa o modelo uma vez (fica no volume ollama-models) e encerra.
+  ollama-pull:
+    image: ollama/ollama:0.40.16
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:3b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-patchnotes}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-patchnotes}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (veja .env.example)}
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    ports:
+      # Publicada porque o navegador conecta direto no WebSocket (ws://localhost:8000/ws/chat).
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      args:
+        API_URL: http://backend:8000
+        NEXT_PUBLIC_CHAT_WS_URL: ws://localhost:8000/ws/chat
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  ollama-models:
