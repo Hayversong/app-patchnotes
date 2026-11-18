@@ -39,18 +39,29 @@ Este repositório junta as duas partes do projeto: o **frontend** em Next.js (Pa
 | Backend | Python 3.14, FastAPI (assíncrono), SQLAlchemy 2 async + asyncpg, Alembic, Pydantic v2, PyJWT, Argon2 |
 | Banco e infraestrutura | PostgreSQL 17, Redis 7 (limites de requisição e de conexões), Mailpit (e-mail de desenvolvimento) |
 | LLM | Ollama com `qwen2.5:3b` (local, sem chave de API) |
-| Qualidade | pytest (137 testes contra PostgreSQL real), ESLint, `tsc --noEmit`, GitHub Actions |
+| Qualidade | pytest (137 testes contra PostgreSQL real), Vitest (29 testes unitários), Playwright (17 cenários ponta a ponta em Chromium, Firefox e WebKit), ESLint, `tsc --noEmit`, GitHub Actions |
 
 ## Arquitetura
+
+Em desenvolvimento:
 
 ```text
 Navegador ──HTTP /api/*──▶ Next.js (rewrite) ──▶ FastAPI ──▶ PostgreSQL
     │                                              │  ├──▶ Redis (limites)
-    └──────────WebSocket ws://…/ws/chat───────────▶│  └──▶ Ollama (LLM, streaming)
+    └──────────WebSocket ws://localhost:8000/ws/chat─▶│  └──▶ Ollama (LLM, streaming)
 ```
 
-- O Next encaminha `/api/*` para o backend no mesmo origin, então o cookie do refresh token continua first-party e não é preciso CORS para o REST.
-- O rewrite do Next não encaminha WebSocket, por isso o navegador conecta direto em `ws://localhost:8000/ws/chat`. O token vai na primeira mensagem, nunca na URL.
+No Docker, um nginx na frente deixa tudo no mesmo endereço:
+
+```text
+Navegador ──▶ nginx :3000 ──┬── /            ──▶ Next.js
+                            ├── /api/*, /docs ──▶ FastAPI
+                            └── /ws/chat      ──▶ FastAPI (WebSocket)
+```
+
+- `/api/*` fica no mesmo origin do site, então o cookie do refresh token continua first-party e não é preciso CORS para o REST.
+- O rewrite do Next não encaminha WebSocket. Em desenvolvimento o navegador conecta direto em `ws://localhost:8000/ws/chat`; no Docker, o nginx encaminha `/ws/chat`. O token vai na primeira mensagem, nunca na URL.
+- O nginx sobrescreve o `X-Forwarded-For` com o IP de quem conectou, e a API só confia nesse cabeçalho quando vem do IP fixo do nginx (`TRUSTED_PROXIES`). Assim os limites de requisição contam o IP real de cada pessoa.
 - Nenhuma conexão com o banco fica aberta enquanto o LLM gera: o pedido é gravado numa transação curta, o streaming acontece sem banco e a resposta é gravada em outra transação curta.
 
 ```text
@@ -86,10 +97,14 @@ docker compose up --build
 | Serviço | Endereço |
 |---|---|
 | Aplicação | http://localhost:3000 |
-| Swagger | http://localhost:8000/docs |
+| Swagger | http://localhost:3000/docs (ou direto na API: http://localhost:8000/docs) |
 | E-mails de desenvolvimento (Mailpit) | http://localhost:8025 |
 
-Na primeira subida, o serviço `ollama-pull` baixa o modelo (cerca de 2 GB). O chat responde depois que o download termina (`docker compose logs -f ollama-pull`). Para usar GPU NVIDIA, descomente o bloco `deploy` do serviço `ollama` no `docker-compose.yml`.
+Na primeira subida, o serviço `ollama-pull` baixa o modelo (cerca de 2 GB). O chat responde depois que o download termina (`docker compose logs -f ollama-pull`). Com GPU NVIDIA (e o `nvidia-container-toolkit` instalado), suba com o arquivo extra:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
 
 Para criar a conta de demonstração (`dev@patchnotes.dev` / `patchnotes123`, com algumas entradas de devlog):
 
@@ -162,11 +177,30 @@ O Swagger em **http://localhost:8000/docs** lista todos os endpoints REST, com o
 cd backend && .venv/bin/python -m pytest -q    # requer o docker compose do backend no ar
 npm run lint
 npm run typecheck
+npm test                 # Vitest: conexão do chat, renovação de sessão, CSP, endereço do WebSocket
 npm run test:greeting
 npm run build
 ```
 
-A CI (`.github/workflows/ci.yml`) roda tudo isso a cada pull request, além de conferir que as migrations estão em dia com os modelos.
+### Ponta a ponta (Playwright)
+
+Os testes em `e2e/` usam o app de verdade: cadastro, login, logout, renovação de sessão, chat com streaming, queda e reconexão do WebSocket, dashboard, tokens, recarga, devlog, perfil, erro 500, ausência de erros de console e layout de celular. Rodam em Chromium e Firefox.
+
+```bash
+npx playwright install chromium firefox        # uma vez
+docker compose up -d --build                   # ou backend + frontend rodando à parte
+npm run test:e2e
+```
+
+- Sem GPU, use o Ollama falso, que responde sempre o mesmo texto em streaming: `node e2e/fake-ollama.mjs` e `OLLAMA_URL=http://127.0.0.1:11434` na API.
+- Outro endereço: `E2E_BASE_URL=http://localhost:3001 npm run test:e2e`. Para incluir o WebKit (Safari): `E2E_BROWSERS=chromium,firefox,webkit`.
+- Cada execução cria contas novas, e o cadastro tem limite de 10 por hora por IP. Para repetir várias vezes seguidas no Docker, zere os limites com `docker compose exec redis redis-cli FLUSHALL`.
+
+A CI (`.github/workflows/ci.yml`) roda tudo isso a cada pull request: pytest e conferência das migrations, lint, tipos, unitários e build do frontend, e o Playwright em Chromium, Firefox e WebKit com o Ollama falso.
+
+### Navegadores
+
+A suíte ponta a ponta completa passa em Chromium, Firefox e WebKit (motor do Safari). O fluxo principal (login, chat com streaming, tokens, navegação e logout) também foi conferido no Firefox 160 instalado no sistema, sem nenhum erro ou aviso no console.
 
 ## Segurança
 

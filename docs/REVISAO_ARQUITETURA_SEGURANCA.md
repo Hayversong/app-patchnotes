@@ -2,7 +2,9 @@
 
 Data: 12/11/2026 · Branch: `implementando-backend` (HEAD `737728a`, working tree limpo no início da revisão) · Escopo: revisão estática do código atual, com verificações automatizadas locais. Nenhum arquivo de código foi alterado.
 
-**Skills usadas:** não há skill chamada "System Design" no ambiente. Para arquitetura usei a mais próxima, `backend-patterns` (camadas, repositórios, transações, rate limiting, logs); para segurança, `security-review` (segredos, validação, injeção, autenticação, XSS, CSRF, rate limiting, exposição de dados, dependências).
+Referências usadas: padrões de backend (camadas, repositórios, transações, rate limiting, logs) e o checklist de segurança do projeto (segredos, validação, injeção, autenticação, XSS, CSRF, rate limiting, exposição de dados, dependências).
+
+> **Nota (18/11/2026):** registro histórico. Desde então o MSW foi removido (todas as telas usam a API real), o chat passou a usar só WebSocket e o ambiente Docker ganhou um proxy nginx com `TRUSTED_PROXIES`. Veja `docs/CHANGELOG.md`.
 
 **Convenção de classificação dos achados:** **comprovado** = reproduzido ou evidente no código; **potencial** = depende de configuração ou implantação; **não verificável** = exige serviço, credencial ou consulta externa não feita.
 
@@ -68,7 +70,7 @@ PostgreSQL 17 (docker, 127.0.0.1)   Ollama (127.0.0.1:11434)    Mailpit (dev, 12
 - **Métricas.** Todas as consultas filtram por `user_id`. O SQL textual de `activeTime` usa o parâmetro `:user_id` (`repositories/metrics.py:13-34`).
 
 **Avaliação da arquitetura (backend-patterns):** as camadas estão bem separadas, sem lógica em `main.py` e com injeção de serviços via `app.state`. A sessão por requisição tem commit antes da resposta (`Depends(..., scope="function")`). Há índices `(user_id, created_at)` nas tabelas de série temporal e o pool tem `pre_ping`. Pontos fracos:
-- rate limit em memória por processo (a própria skill desaconselha em produção);
+- rate limit em memória por processo (não recomendado em produção);
 - listas sem paginação: `GET /devlog/entries` devolve tudo, e o histórico do chat é limitado a 200;
 - não há limpeza de tokens expirados nem de mensagens `pending` órfãs (processo morto no meio da geração);
 - não há logs estruturados nem request-id.
