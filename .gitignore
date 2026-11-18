@@ -1,12 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Local tooling and review notes
-.codex/
-.agents/
-.docs/
+# Anotações locais (não versionadas): documentação de estudo, roteiro do pitch e relatório da entrega
+/entrega/
 /docs/*
 *.md
-checkpoint.md
 !README.md
 # Contratos da API: fonte única entre frontend e backend, versionada.
 !/docs/API_CONTRACTS.md
