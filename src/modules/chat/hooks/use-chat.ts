@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
-import { resolveChatSocketUrl } from "@/lib/config";
+import { chatSocketSetting } from "@/lib/config";
 import { ChatSocket } from "@/modules/chat/services/chat-socket";
 import { getChatHistory } from "@/modules/chat/services/chat.service";
 import type { SendChatVariables } from "@/modules/chat/types/chat.types";
@@ -16,7 +16,8 @@ export function useChatHistory() {
  * (e interrompe uma geração em andamento).
  */
 export function useChatSocket() {
-  const [socket] = useState(() => new ChatSocket(resolveChatSocketUrl()));
+  // O endereço é resolvido só ao conectar (no navegador): na renderização do servidor não existe window.
+  const [socket] = useState(() => new ChatSocket(chatSocketSetting));
   useEffect(() => {
     socket.start();
     return () => socket.stop();

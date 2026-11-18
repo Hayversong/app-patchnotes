@@ -1,12 +1,21 @@
-# Ambiente completo do Patchnotes: frontend, API, PostgreSQL, Redis, Ollama (LLM) e Mailpit.
+# Ambiente completo do Patchnotes: proxy (nginx), frontend, API, PostgreSQL, Redis, Ollama (LLM) e Mailpit.
 #
 #   cp .env.example .env      # ajuste JWT_SECRET e a senha do banco
 #   docker compose up --build
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build   # com GPU NVIDIA
 #
-# Frontend: http://localhost:3000 · Swagger: http://localhost:8000/docs · E-mails: http://localhost:8025
+# Aplicação: http://localhost:3000 (nginx: site, /api, /ws e /docs no mesmo endereço)
+# Swagger: http://localhost:3000/docs (ou direto na API: http://localhost:8000/docs) · E-mails: http://localhost:8025
 # Na primeira subida o serviço ollama-pull baixa o modelo (~2 GB); o chat responde depois que ele terminar.
 # Portas presas a 127.0.0.1. Não rode junto com backend/docker-compose.yml (mesmas portas).
 name: patchnotes-stack
+
+# Rede com endereço fixo para o proxy: a API só confia no X-Forwarded-For vindo dele (TRUSTED_PROXIES).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.57.0/24
 
 x-db-env: &db-env
   POSTGRES_USER: ${POSTGRES_USER:-patchnotes}
@@ -43,11 +52,6 @@ services:
     image: ollama/ollama:0.40.16
     volumes:
       - ollama-models:/root/.ollama
-    # Com GPU NVIDIA (nvidia-container-toolkit instalado), descomente:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
@@ -73,13 +77,15 @@ services:
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (veja .env.example)}
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3000
+      # Só o nginx (endereço fixo abaixo). Nunca o frontend: o rewrite do Next repassa o cabeçalho do cliente.
+      TRUSTED_PROXIES: 172.30.57.10
       FRONTEND_URL: http://localhost:3000
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
     ports:
-      # Publicada porque o navegador conecta direto no WebSocket (ws://localhost:8000/ws/chat).
+      # Acesso direto à API (Swagger, testes). O navegador usa o proxy em localhost:3000.
       - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
@@ -94,12 +100,24 @@ services:
       context: .
       args:
         API_URL: http://backend:8000
-        NEXT_PUBLIC_CHAT_WS_URL: ws://localhost:8000/ws/chat
-    ports:
-      - "127.0.0.1:3000:3000"
+        # Mesmo endereço da página: o nginx encaminha /ws/ para a API.
+        NEXT_PUBLIC_CHAT_WS_URL: /ws/chat
     depends_on:
       backend:
         condition: service_healthy
+
+  proxy:
+    image: nginx:1.30-alpine
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:3000:80"
+    networks:
+      default:
+        ipv4_address: 172.30.57.10
+    depends_on:
+      - frontend
+      - backend
 
 volumes:
   postgres-data:

@@ -265,3 +265,11 @@ describe("ciclo de vida da tela", () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 });
+
+describe("endereço", () => {
+  it("caminho relativo vira ws:// do mesmo endereço da página na hora de conectar", () => {
+    const chat = new ChatSocket("/ws/chat");
+    chat.start();
+    expect(FakeWebSocket.latest().url).toBe("ws://localhost:3000/ws/chat");
+  });
+});

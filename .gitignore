@@ -57,3 +57,6 @@ backend/.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+/e2e/.auth/
+/test-results/
+/playwright-report/

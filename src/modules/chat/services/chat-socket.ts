@@ -1,4 +1,5 @@
 import { refreshAccessToken } from "@/lib/axios";
+import { resolveChatSocketUrl } from "@/lib/config";
 import type { ChatSocketServerEvent, ChatSocketStatus, SendChatRequest, SendChatResponse } from "@/modules/chat/types/chat.types";
 import { useAuthStore } from "@/store/authStore";
 
@@ -61,6 +62,7 @@ export class ChatSocket {
   private state: ChatSocketState = { status: "connecting", attempt: 0 };
   private readonly listeners = new Set<(state: ChatSocketState) => void>();
 
+  /** `url`: endereço completo (ws://...) ou caminho relativo à página (/ws/chat). */
   constructor(private readonly url: string) {}
 
   getState(): ChatSocketState {
@@ -142,7 +144,7 @@ export class ChatSocket {
       if (this.state.status !== "reconnecting") this.setState({ status: "connecting", attempt: 0 });
 
       const generation = this.generation;
-      const socket = new WebSocket(this.url);
+      const socket = new WebSocket(resolveChatSocketUrl(this.url));
       let ready = false;
       const timer = window.setTimeout(() => socket.close(), CONNECT_TIMEOUT_MS);
 
