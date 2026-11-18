@@ -34,7 +34,7 @@ function BalanceCard({ balance }: { balance: TokenBalance }) {
         <div className="h-2 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-label="Consumo do mês" aria-valuemin={0} aria-valuemax={100} aria-valuenow={usedPercent}>
           <div className={cn("h-full rounded-full transition-[width]", low ? "bg-amber-400" : "bg-lime-400")} style={{ width: `${usedPercent}%` }} />
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">{number(balance.used)} de {number(balance.limit)} usados ({usedPercent}%)</p>
+        <p className="mt-2 text-xs text-muted-foreground">{number(balance.used)} de {number(balance.limit)} usados ({balance.used > 0 && usedPercent === 0 ? "menos de 1" : usedPercent}%)</p>
       </div>
       <dl className="grid grid-cols-2 gap-3 text-xs">
         <div><dt className="text-zinc-500">Recargas no mês</dt><dd className="mt-1 font-mono text-sm">{number(balance.credits)}</dd></div>
