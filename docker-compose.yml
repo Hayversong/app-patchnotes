@@ -17,6 +17,13 @@ networks:
       config:
         - subnet: 172.30.57.0/24
 
+# Containers da aplicação sem escalada de privilégio e sem capacidades de kernel (não precisam de nenhuma).
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 x-db-env: &db-env
   POSTGRES_USER: ${POSTGRES_USER:-patchnotes}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env (veja .env.example)}
@@ -70,6 +77,7 @@ services:
     restart: "no"
 
   backend:
+    <<: *hardening
     build: ./backend
     environment:
       ENVIRONMENT: development
@@ -96,6 +104,7 @@ services:
         condition: service_healthy
 
   frontend:
+    <<: *hardening
     build:
       context: .
       args:
