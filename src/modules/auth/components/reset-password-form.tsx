@@ -71,7 +71,7 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={resetPassword.isPending} noValidate>
+    <form method="post" onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={resetPassword.isPending} noValidate>
       <fieldset className="min-w-0 space-y-5" disabled={resetPassword.isPending}>
         <AuthItem><AnimatedInput id="password" autoFocus label="Nova senha" hint="Use pelo menos 8 caracteres." type="password" autoComplete="new-password" error={touchedFields.password || isSubmitted ? errors.password?.message : undefined} success={Boolean(touchedFields.password && !errors.password)} {...register("password")} /></AuthItem>
         <AuthItem><AnimatedInput id="passwordConfirmation" label="Confirme a nova senha" type="password" autoComplete="new-password" error={touchedFields.passwordConfirmation || isSubmitted ? errors.passwordConfirmation?.message : undefined} success={Boolean(touchedFields.passwordConfirmation && !errors.passwordConfirmation)} {...register("passwordConfirmation")} /></AuthItem>

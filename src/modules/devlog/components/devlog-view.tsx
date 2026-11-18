@@ -59,7 +59,7 @@ export function DevlogView() {
           </AnimatedGroup>
         </section>
         <aside className="min-w-0 lg:sticky lg:top-8"><Card><CardHeader><CardTitle className="flex items-center gap-2"><Plus aria-hidden="true" className="size-5 text-lime-400" /> Nova entrada</CardTitle></CardHeader><CardContent>
-          <form onSubmit={onSubmit} onChange={() => setFeedback(null)} aria-busy={createEntry.isPending} noValidate>
+          <form method="post" onSubmit={onSubmit} onChange={() => setFeedback(null)} aria-busy={createEntry.isPending} noValidate>
             <fieldset disabled={createEntry.isPending} className="min-w-0 space-y-5">
               <FormField id="title" label="Título" hint="Resuma seu progresso em pelo menos 3 caracteres." error={touchedFields.title || isSubmitted ? errors.title?.message : undefined} {...register("title")} />
               <TextareaField id="content" label="Progresso" rows={7} hint="O que você desenvolveu ou aprendeu? Use pelo menos 10 caracteres." error={touchedFields.content || isSubmitted ? errors.content?.message : undefined} {...register("content")} />

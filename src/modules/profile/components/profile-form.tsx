@@ -45,7 +45,7 @@ export function ProfileForm() {
       {profile.isLoading ? <LoadingState label="Carregando perfil..." /> :
       profile.isError || !profile.data ? <ErrorState message="Não foi possível carregar o perfil." pending={profile.isFetching} retry={() => void profile.refetch()} /> :
       <Card><CardHeader><CardTitle>Dados pessoais</CardTitle></CardHeader><CardContent>
-        <form onSubmit={onSubmit} onChange={() => setFeedback(null)} aria-busy={updateProfile.isPending} noValidate>
+        <form method="post" onSubmit={onSubmit} onChange={() => setFeedback(null)} aria-busy={updateProfile.isPending} noValidate>
           <fieldset disabled={updateProfile.isPending} className="min-w-0 space-y-5">
             <FormField id="name" label="Nome" autoComplete="name" hint="Use pelo menos 2 caracteres." error={touchedFields.name || isSubmitted ? errors.name?.message : undefined} {...register("name")} />
             <FormField id="email" label="E-mail" value={profile.data.email} readOnly hint="O e-mail não pode ser alterado nesta tela." />

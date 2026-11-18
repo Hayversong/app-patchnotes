@@ -20,7 +20,8 @@ export function middleware(request: NextRequest) {
   // CSP com nonce por requisição. O Next lê o nonce do cabeçalho Content-Security-Policy da REQUISIÇÃO e o
   // aplica aos próprios scripts; a RESPOSTA leva a mesma política para o navegador.
   const nonce = createNonce();
-  const policy = buildContentSecurityPolicy(nonce, process.env.NODE_ENV === "development");
+  const https = request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
+  const policy = buildContentSecurityPolicy(nonce, process.env.NODE_ENV === "development", https);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
   requestHeaders.set("Content-Security-Policy", policy);

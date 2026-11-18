@@ -38,7 +38,7 @@ export function LoginForm() {
   });
 
   return (
-    <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={loginMutation.isPending} noValidate>
+    <form method="post" onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={loginMutation.isPending} noValidate>
       <fieldset className="min-w-0 space-y-5" disabled={loginMutation.isPending}>
       <AuthItem><AnimatedInput id="email" autoFocus label="E-mail" type="email" autoComplete="email" placeholder="voce@exemplo.com" error={touchedFields.email || isSubmitted ? errors.email?.message : undefined} success={Boolean(touchedFields.email && !errors.email)} {...register("email")} /></AuthItem>
       <AuthItem><AnimatedInput id="password" label="Senha" type="password" autoComplete="current-password" error={touchedFields.password || isSubmitted ? errors.password?.message : undefined} success={Boolean(touchedFields.password && !errors.password)} {...register("password")} /></AuthItem>

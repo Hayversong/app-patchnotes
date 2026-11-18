@@ -24,7 +24,12 @@ function websocketOrigin(): string | null {
   }
 }
 
-export function buildContentSecurityPolicy(nonce: string, isDev: boolean): string {
+/**
+ * `https`: a página foi servida por HTTPS (direto ou atrás de um proxy que informa X-Forwarded-Proto).
+ * Só então entra `upgrade-insecure-requests`. Em HTTP ela quebraria o site: o Safari/WebKit troca
+ * http://localhost por https:// em todos os recursos (Chrome e Firefox abrem exceção só para localhost).
+ */
+export function buildContentSecurityPolicy(nonce: string, isDev: boolean, https = false): string {
   const chatSocket = websocketOrigin();
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
@@ -39,7 +44,7 @@ export function buildContentSecurityPolicy(nonce: string, isDev: boolean): strin
     "base-uri": ["'self'"],
     "form-action": ["'self'"],
     "frame-ancestors": ["'none'"],
-    ...(isDev ? {} : { "upgrade-insecure-requests": [] }),
+    ...(https && !isDev ? { "upgrade-insecure-requests": [] } : {}),
   };
   return Object.entries(directives)
     .map(([name, values]) => [name, ...values].join(" "))

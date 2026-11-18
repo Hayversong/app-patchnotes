@@ -33,7 +33,7 @@ export function ForgotPasswordForm() {
   });
 
   return (
-    <form onSubmit={onSubmit} onChange={() => setResult((current) => (current?.error ? null : current))} aria-busy={forgotPassword.isPending} noValidate>
+    <form method="post" onSubmit={onSubmit} onChange={() => setResult((current) => (current?.error ? null : current))} aria-busy={forgotPassword.isPending} noValidate>
       <fieldset className="min-w-0 space-y-5" disabled={forgotPassword.isPending}>
         <AuthItem><AnimatedInput id="email" autoFocus label="E-mail da conta" type="email" autoComplete="email" placeholder="voce@exemplo.com" error={touchedFields.email || isSubmitted ? errors.email?.message : undefined} success={Boolean(touchedFields.email && !errors.email)} {...register("email")} /></AuthItem>
         {result && <AuthItem><Feedback error={result.error}>{result.message}</Feedback></AuthItem>}

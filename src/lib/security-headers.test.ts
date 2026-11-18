@@ -15,6 +15,11 @@ describe("Content-Security-Policy", () => {
     expect(csp["object-src"]).toEqual(["'none'"]);
   });
 
+  it("upgrade-insecure-requests só sob HTTPS (em HTTP o Safari quebraria todos os scripts)", () => {
+    expect(directives(buildContentSecurityPolicy("abc", false, false))["upgrade-insecure-requests"]).toBeUndefined();
+    expect(directives(buildContentSecurityPolicy("abc", false, true))["upgrade-insecure-requests"]).toEqual([]);
+  });
+
   it("desenvolvimento libera eval e ws: para o recarregamento do Next", () => {
     const csp = directives(buildContentSecurityPolicy("abc", true));
     expect(csp["script-src"]).toContain("'unsafe-eval'");
