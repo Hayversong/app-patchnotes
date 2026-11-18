@@ -18,6 +18,9 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  // O app não usa o otimizador de imagens (o avatar já é `unoptimized`). Desligado, /_next/image deixa de existir,
+  // e com ele a superfície das falhas que o Next já teve nesse endpoint.
+  images: { unoptimized: true },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
