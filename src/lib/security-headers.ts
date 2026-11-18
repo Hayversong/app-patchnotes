@@ -10,13 +10,15 @@
  * - Só em desenvolvimento: 'unsafe-eval' (React Refresh/webpack), ws: (HMR) e http: em imagens.
  */
 
-import { chatSocketUrl } from "@/lib/config";
+import { chatSocketSetting } from "@/lib/config";
 
 export const NONCE_HEADER = "x-nonce";
 
+/** Origem do WebSocket do chat quando ele fica em outro endereço. Caminho relativo já é coberto por 'self'. */
 function websocketOrigin(): string | null {
+  if (chatSocketSetting.startsWith("/")) return null;
   try {
-    return new URL(chatSocketUrl).origin.replace(/^http/, "ws");
+    return new URL(chatSocketSetting).origin.replace(/^http/, "ws");
   } catch {
     return null;
   }
