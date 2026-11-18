@@ -29,7 +29,7 @@ const navigation = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const token = useAuthStore((state) => state.token);
+  const authenticated = useAuthStore((state) => state.authenticated);
   const storedUser = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const endSession = useLogout();
@@ -45,8 +45,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [currentUser.data, setUser]);
 
   useEffect(() => {
-    if (!token) router.replace("/login");
-  }, [router, token]);
+    if (!authenticated) router.replace("/login");
+  }, [router, authenticated]);
 
   function logout() {
     endSession();

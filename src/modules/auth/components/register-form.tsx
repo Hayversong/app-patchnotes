@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Feedback } from "@/components/ui/feedback";
 import { formOptions } from "@/lib/form-options";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -15,9 +14,9 @@ import { AuthItem } from "./auth-motion";
 import { AnimatedInput } from "./animated-input";
 
 export function RegisterForm() {
-  const router = useRouter();
   const registerMutation = useRegisterMutation();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const { register, handleSubmit, formState: { errors, touchedFields, isSubmitted } } = useForm<RegisterFormData>({
     ...formOptions,
     resolver: zodResolver(registerSchema),
@@ -28,11 +27,19 @@ export function RegisterForm() {
     setServerError(null);
     try {
       await registerMutation.mutateAsync({ name: values.name, email: values.email, password: values.password });
-      router.replace("/dashboard");
+      setSentTo(values.email);
     } catch (error) {
       setServerError(getApiErrorMessage(error, "Não foi possível criar a conta. Verifique sua conexão e tente novamente."));
     }
   });
+
+  // A resposta é a mesma para qualquer e-mail (a API não revela quais já têm conta).
+  if (sentTo) {
+    return <div className="space-y-4" role="status">
+      <Feedback>Quase lá! Enviamos um link de confirmação para <strong className="break-all">{sentTo}</strong>.</Feedback>
+      <p className="text-sm leading-6 text-muted-foreground">Abra o link para ativar a conta. Ele vale por 24 horas e só pode ser usado uma vez. Não chegou? Confira o spam ou faça o cadastro de novo.</p>
+    </div>;
+  }
 
   return (
     <form method="post" onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={registerMutation.isPending} noValidate>

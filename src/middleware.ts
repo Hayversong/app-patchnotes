@@ -7,13 +7,18 @@ const protectedRoutes = ["/dashboard", "/chat", "/devlog", "/tokens", "/profile"
 const authRoutes = ["/login", "/register"];
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get("patchnotes_token")?.value;
+  // patchnotes_access: cookie HttpOnly da API (o middleware, no servidor, consegue ler; o JavaScript, não).
+  // patchnotes_session: indicador sem segredo que o frontend apaga ao encerrar a sessão. Como o JavaScript não
+  // apaga o cookie HttpOnly, um access vencido pode sobrar; por isso sair das telas de login exige os dois,
+  // senão /login e /dashboard ficariam se mandando de um para o outro.
+  const hasAccess = Boolean(request.cookies.get("patchnotes_access")?.value);
+  const hasSession = request.cookies.get("patchnotes_session")?.value === "1";
   const { pathname } = request.nextUrl;
 
-  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !token) {
+  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !hasAccess) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  if (authRoutes.includes(pathname) && token) {
+  if (authRoutes.includes(pathname) && hasAccess && hasSession) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

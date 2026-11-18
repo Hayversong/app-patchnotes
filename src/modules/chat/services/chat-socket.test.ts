@@ -5,7 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { FakeWebSocket } from "@/test/fake-websocket";
 
 // vi.mock é içado para antes dos imports: a ChatSocket já recebe a versão simulada.
-const { refreshAccessToken } = vi.hoisted(() => ({ refreshAccessToken: vi.fn<() => Promise<string | null>>() }));
+const { refreshAccessToken } = vi.hoisted(() => ({ refreshAccessToken: vi.fn<() => Promise<boolean>>() }));
 vi.mock("@/lib/axios", () => ({ refreshAccessToken: () => refreshAccessToken() }));
 
 const URL = "ws://localhost:8000/ws/chat";
@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeWebSocket);
   FakeWebSocket.reset();
   refreshAccessToken.mockReset();
-  useAuthStore.setState({ token: "token-1", user: null, sessionExpired: false });
+  useAuthStore.setState({ authenticated: true, user: null, sessionExpired: false });
 });
 
 afterEach(() => {
@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe("conexão", () => {
-  it("autentica com a primeira mensagem, sem token na URL, e fica aberta", async () => {
+  it("autentica com a primeira mensagem (token no cookie HttpOnly, nunca na URL nem no JS) e fica aberta", async () => {
     const chat = new ChatSocket(URL);
     const states: string[] = [];
     chat.subscribe((state) => states.push(state.status));
@@ -48,7 +48,7 @@ describe("conexão", () => {
     expect(chat.getState().status).toBe("connecting");
 
     socket.serverOpen();
-    expect(socket.sent).toEqual([{ type: "auth", token: "token-1" }]);
+    expect(socket.sent).toEqual([{ type: "auth" }]);
     socket.serverSend({ type: "ready" });
     await flush();
     expect(chat.getState()).toEqual({ status: "open", attempt: 0 });
@@ -183,10 +183,7 @@ describe("fechamentos do servidor", () => {
   });
 
   it("token expirado (4401) é renovado antes de reconectar", async () => {
-    refreshAccessToken.mockImplementation(async () => {
-      useAuthStore.setState({ token: "token-2" });
-      return "token-2";
-    });
+    refreshAccessToken.mockResolvedValue(true);
     const { chat, socket } = connected();
     socket.serverClose(4401);
     await flush();
@@ -194,14 +191,14 @@ describe("fechamentos do servidor", () => {
     await vi.advanceTimersByTimeAsync(1000);
     const next = FakeWebSocket.latest();
     next.serverOpen();
-    expect(next.sent[0]).toEqual({ type: "auth", token: "token-2" });
+    expect(next.sent[0]).toEqual({ type: "auth" });
     next.serverSend({ type: "ready" });
     await flush();
     expect(chat.getState().status).toBe("open");
   });
 
   it("renovação recusada encerra sem novas tentativas", async () => {
-    refreshAccessToken.mockResolvedValue(null);
+    refreshAccessToken.mockResolvedValue(false);
     const { chat, socket } = connected();
     socket.serverClose(4401);
     await flush();
@@ -211,10 +208,7 @@ describe("fechamentos do servidor", () => {
   });
 
   it("envio recusado com 4401 antes do ready renova o token e reenvia uma vez", async () => {
-    refreshAccessToken.mockImplementation(async () => {
-      useAuthStore.setState({ token: "token-2" });
-      return "token-2";
-    });
+    refreshAccessToken.mockResolvedValue(true);
     const chat = new ChatSocket(URL);
     const reply = chat.send({ message: "oi" });
     const first = FakeWebSocket.latest();
@@ -226,13 +220,13 @@ describe("fechamentos do servidor", () => {
     expect(retry).not.toBe(first);
     retry.serverAccept();
     await flush();
-    expect(retry.sent).toEqual([{ type: "auth", token: "token-2" }, { type: "message", message: "oi" }]);
+    expect(retry.sent).toEqual([{ type: "auth" }, { type: "message", message: "oi" }]);
     retry.serverSend({ type: "done", done: true, tokens: 3, message: answer });
     await expect(reply).resolves.toEqual(answer);
   });
 
-  it("sem token na sessão nem tenta conectar", async () => {
-    useAuthStore.setState({ token: null });
+  it("sem sessão nem tenta conectar", async () => {
+    useAuthStore.setState({ authenticated: false });
     const chat = new ChatSocket(URL);
     await expect(chat.send({ message: "oi" })).rejects.toMatchObject({ code: "unauthorized" });
     expect(FakeWebSocket.instances).toHaveLength(0);

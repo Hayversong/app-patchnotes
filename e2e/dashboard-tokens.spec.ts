@@ -4,8 +4,9 @@ import { openChat, visit } from "./helpers";
 
 type Metrics = { messagesExchanged: number; tokensUsed: number; activeTime: string };
 
+/** Lê a API com a mesma sessão da página (cookies HttpOnly do contexto). */
 async function api<T>(page: Page, path: string): Promise<T> {
-  const response = await page.request.get(path, { headers: { Authorization: `Bearer ${await token(page)}` } });
+  const response = await page.request.get(path);
   expect(response.ok(), path).toBeTruthy();
   return (await response.json()) as T;
 }
@@ -25,10 +26,6 @@ async function balance(page: Page): Promise<number> {
   return (await api<{ balance: number }>(page, "/api/tokens/balance")).balance;
 }
 
-async function token(page: Page): Promise<string> {
-  const cookie = (await page.context().cookies()).find((item) => item.name === "patchnotes_token");
-  return decodeURIComponent(cookie?.value ?? "");
-}
 
 test("dashboard, saldo e extrato refletem o consumo real de uma conversa", async ({ page }) => {
   const before = await metrics(page);

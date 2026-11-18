@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -10,30 +10,15 @@ import { Feedback, LoadingState } from "@/components/ui/feedback";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formOptions } from "@/lib/form-options";
 import { useResetPasswordMutation } from "@/modules/auth/hooks/use-auth";
+import { useFragmentToken } from "@/modules/auth/hooks/use-fragment-token";
 import { resetPasswordSchema, type ResetPasswordFormData } from "@/modules/auth/schemas/reset-password.schema";
 import { AnimatedInput } from "./animated-input";
 import { AuthItem } from "./auth-motion";
 
 const linkClass = "font-medium text-lime-400 underline underline-offset-4 hover:text-lime-300";
 
-/** Lê o token do fragmento (#token=...) e o remove da barra de endereço logo em seguida. */
-function useResetTokenFromFragment(): string | null | undefined {
-  const [token, setToken] = useState<string | null | undefined>(undefined);
-  // O ref guarda o token lido: o efeito pode rodar de novo (StrictMode) depois que o fragmento já foi apagado.
-  const captured = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    if (captured.current === undefined) {
-      const value = new URLSearchParams(window.location.hash.slice(1)).get("token");
-      captured.current = value && value.length >= 20 ? value : null;
-      if (window.location.hash) window.history.replaceState(window.history.state, "", window.location.pathname);
-    }
-    setToken(captured.current);
-  }, []);
-  return token;
-}
-
 export function ResetPasswordForm() {
-  const token = useResetTokenFromFragment();
+  const token = useFragmentToken();
   const resetPassword = useResetPasswordMutation();
   const [serverError, setServerError] = useState<string | null>(null);
   const [done, setDone] = useState(false);

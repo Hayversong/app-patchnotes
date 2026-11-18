@@ -136,8 +136,7 @@ export class ChatSocket {
 
   private open(): Promise<WebSocket> {
     return new Promise<WebSocket>((resolve, reject) => {
-      const token = useAuthStore.getState().token;
-      if (!token) {
+      if (!useAuthStore.getState().authenticated) {
         reject(new ChatStreamError("unauthorized", SESSION_EXPIRED));
         return;
       }
@@ -148,7 +147,8 @@ export class ChatSocket {
       let ready = false;
       const timer = window.setTimeout(() => socket.close(), CONNECT_TIMEOUT_MS);
 
-      socket.onopen = () => socket.send(JSON.stringify({ type: "auth", token }));
+      // Sem token na mensagem: a API usa o cookie HttpOnly enviado no handshake (mesmo site; Origin conferido).
+      socket.onopen = () => socket.send(JSON.stringify({ type: "auth" }));
       socket.onmessage = (message) => {
         if (generation !== this.generation) return;
         const event = parseEvent(message.data);

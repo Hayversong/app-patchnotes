@@ -18,30 +18,43 @@ function serve(handler: Handler) {
   };
 }
 
+/** Servidor simulado: o "cookie" do access token está vencido até o /auth/refresh regravá-lo. */
+function sessionServer() {
+  let cookieValid = false;
+  return (config: InternalAxiosRequestConfig) => {
+    if (config.url === "/auth/refresh") {
+      cookieValid = true;
+      return { status: 200, data: { user } };
+    }
+    return cookieValid ? { status: 200, data: config.url } : { status: 401 };
+  };
+}
+
 const user = { id: "u1", name: "Dev", email: "dev@patchnotes.dev" };
 
 beforeEach(() => {
   calls.length = 0;
-  useAuthStore.setState({ token: "velho", user, sessionExpired: false });
+  useAuthStore.setState({ authenticated: true, user, sessionExpired: false });
 });
 
-describe("renovação de sessão", () => {
-  it("401 renova o token pelo /auth/refresh e refaz a requisição", async () => {
-    serve((config) => {
-      if (config.url === "/auth/refresh") return { status: 200, data: { user, token: "novo" } };
-      return config.headers.Authorization === "Bearer novo" ? { status: 200, data: { ok: true } } : { status: 401 };
-    });
+describe("renovação de sessão (cookies HttpOnly)", () => {
+  it("nenhuma requisição carrega token no JavaScript", async () => {
+    serve(() => ({ status: 200, data: {} }));
+    await api.get("/profile");
+    expect(calls[0].auth).toBeUndefined();
+    expect(api.defaults.withCredentials).toBe(true);
+  });
+
+  it("401 renova pelo /auth/refresh e refaz a requisição", async () => {
+    serve(sessionServer());
     const { data } = await api.get("/dashboard/metrics");
-    expect(data).toEqual({ ok: true });
+    expect(data).toBe("/dashboard/metrics");
     expect(calls.map((call) => call.url)).toEqual(["/dashboard/metrics", "/auth/refresh", "/dashboard/metrics"]);
-    expect(useAuthStore.getState().token).toBe("novo");
+    expect(useAuthStore.getState()).toMatchObject({ authenticated: true, user });
   });
 
   it("vários 401 ao mesmo tempo compartilham uma única renovação", async () => {
-    serve((config) => {
-      if (config.url === "/auth/refresh") return { status: 200, data: { user, token: "novo" } };
-      return config.headers.Authorization === "Bearer novo" ? { status: 200, data: config.url } : { status: 401 };
-    });
+    serve(sessionServer());
     const results = await Promise.all(["/a", "/b", "/c"].map((url) => api.get(url)));
     expect(results.map((result) => result.data)).toEqual(["/a", "/b", "/c"]);
     expect(calls.filter((call) => call.url === "/auth/refresh")).toHaveLength(1);
@@ -50,11 +63,11 @@ describe("renovação de sessão", () => {
   it("refresh recusado encerra a sessão marcando como expirada", async () => {
     serve(() => ({ status: 401 }));
     await expect(api.get("/profile")).rejects.toBeInstanceOf(AxiosError);
-    expect(useAuthStore.getState()).toMatchObject({ token: null, user: null, sessionExpired: true });
+    expect(useAuthStore.getState()).toMatchObject({ authenticated: false, user: null, sessionExpired: true });
   });
 
   it("401 de rota de autenticação (senha errada) não tenta renovar", async () => {
-    useAuthStore.setState({ token: null });
+    useAuthStore.setState({ authenticated: false });
     serve(() => ({ status: 401, data: { message: "E-mail ou senha incorretos." } }));
     const error = await api.post("/auth/login", {}, { skipAuthRefresh: true }).catch((caught: unknown) => caught);
     expect(getApiErrorMessage(error)).toBe("E-mail ou senha incorretos.");
@@ -62,15 +75,15 @@ describe("renovação de sessão", () => {
   });
 
   it("não entra em laço se a requisição refeita também tomar 401", async () => {
-    serve((config) => (config.url === "/auth/refresh" ? { status: 200, data: { user, token: "novo" } } : { status: 401 }));
+    serve((config) => (config.url === "/auth/refresh" ? { status: 200, data: { user } } : { status: 401 }));
     await expect(api.get("/chat/history")).rejects.toBeInstanceOf(AxiosError);
     expect(calls.map((call) => call.url)).toEqual(["/chat/history", "/auth/refresh", "/chat/history"]);
     expect(useAuthStore.getState().sessionExpired).toBe(true);
   });
 
-  it("refreshAccessToken devolve null sem derrubar quem chamou", async () => {
+  it("refreshAccessToken devolve false sem derrubar quem chamou", async () => {
     serve(() => ({ status: 500 }));
-    await expect(refreshAccessToken()).resolves.toBeNull();
+    await expect(refreshAccessToken()).resolves.toBe(false);
   });
 });
 
