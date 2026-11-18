@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.middleware import BodySizeLimitMiddleware
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.connection_limits import MemoryConnectionSlots, RedisConnectionSlots
 from app.core.rate_limit import MemoryRateLimiter, RateLimiter, RedisRateLimiter
 from app.db.session import create_engine, create_sessionmaker
@@ -87,6 +88,8 @@ def create_app(
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
+    # Por último = camada mais externa: os cabeçalhos valem também para 413, preflight de CORS e erros.
+    app.add_middleware(SecurityHeadersMiddleware)
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api")
