@@ -13,10 +13,10 @@ Configuração de segurança em vigor e status dos achados da [revisão de 12/11
 | Várias réplicas | implementado | limites e vagas de WebSocket no Redis (scripts Lua atômicos); `REDIS_URL` obrigatório em production; falha fechada (503) | `80d04cc`, `5d2dc5e` |
 | **S3** — WebSocket sem limites | corrigido | vagas por IP e por conta com heartbeat, inatividade (4408), expiração do token (4401) | `5d2dc5e` |
 | **S4** (pedido) — limpeza síncrona de registros | corrigido | não havia limpeza; criada rotina em lote fora da requisição, com índices e advisory lock | `ae4bf6c` |
-| **S7** — enumeração de e-mail | corrigido em parte; **risco aceito** | `forgot-password` faz todo o trabalho depois da resposta. Login já era uniforme. O 409 do cadastro continua por decisão (12/11/2026) | `e824a85` |
+| **S7** — enumeração de e-mail | corrigido | `forgot-password` e, desde 18/11, também o cadastro respondem igual para qualquer e-mail e fazem o trabalho depois da resposta; a conta nasce na confirmação do e-mail | `e824a85`, `e35459e` |
 | **S8** (revisão) — devlog/perfil sem limites e paginação | corrigido | paginação por cursor compatível; 30 criações/min de devlog e 20 edições/min de perfil por usuário | `a4e6bbe` |
 | **S6** — sem CSP | corrigido | CSP com nonce por requisição e cabeçalhos de segurança | `7a2dafe` |
-| **S5** — access token legível por JavaScript | parcial; **risco aceito** | `Secure` no cookie em HTTPS e CSP estrita reduzem o risco. O token continua legível por JavaScript por decisão (12/11/2026) | `7a2dafe` |
+| **S5** — access token legível por JavaScript | corrigido (18/11) | token em cookie HttpOnly (`patchnotes_access`), fora do corpo das respostas; escritas por cookie exigem origem do próprio site (CSRF) | `e35459e`, `03e6f70` |
 | Middleware do Next nunca executava | corrigido (achado novo) | `middleware.ts` estava na raiz; com `src/`, o Next só lê `src/middleware.ts` | `7a2dafe` |
 
 ## Content Security Policy (frontend)
@@ -76,14 +76,27 @@ Varredura automática (`npm audit`, `pip-audit`, `bandit`), revisão do código 
 
 Conferido e sem problema: JWT com algoritmo fixo e verificação de expiração e versão de sessão; SQL sempre parametrizado; nenhum `dangerouslySetInnerHTML`, `eval` ou redirecionamento controlado pelo usuário; nenhum segredo no histórico do git; logs registram só o tipo do erro; respostas de erro sem stack trace; isolamento entre contas; `pip-audit` sem vulnerabilidades; avisos do `bandit` são falsos positivos (mensagens de texto e a senha do seed, que recusa rodar em produção).
 
-### Riscos residuais (conscientes)
+### Riscos que ficaram da vistoria (corrigidos em 18/11/2026)
 
-- **Ambiente Docker é de desenvolvimento:** HTTP, cookies sem `Secure` e Swagger ligado. Em produção: `ENVIRONMENT=production` (exige `COOKIE_SECURE=true`, segredo forte, CORS explícito e Redis; desliga o Swagger) e um proxy com HTTPS.
-- **Access token legível por JavaScript** (S5) e **409 no cadastro com e-mail existente**: decisões de 12/11, abaixo.
-- **Avatar por URL externa:** ao exibir o próprio avatar, o navegador busca a imagem no servidor informado, que fica sabendo o IP de quem vê. Só a própria pessoa vê o avatar.
-- **Redis sem senha** dentro da rede do Docker (porta não publicada). Em produção, use senha ou rede isolada.
+| Risco | Correção | Commit |
+|---|---|---|
+| Access token legível por JavaScript (S5) | Cookie `patchnotes_access` HttpOnly + SameSite=Strict; corpo das respostas sem token; API aceita cookie ou `Authorization`; escritas pelo cookie exigem `Origin`/`Sec-Fetch-Site` do próprio site (também login, cadastro e refresh: sem login CSRF); WebSocket autentica pelo cookie do handshake, com `Origin` conferido | `e35459e`, `03e6f70` |
+| Cadastro revelava e-mails existentes (409) | Resposta 202 idêntica para qualquer e-mail, trabalho depois da resposta; conta criada só com o link de confirmação (uso único, 24 h); senha guardada no pedido pendente, então cadastrar o e-mail alheio não gera conta com a senha do atacante | `e35459e`, `03e6f70` |
+| Avatar por URL externa (IP de quem via ia para o servidor da imagem; CSP com `img-src https:`) | Upload do arquivo, servido por `/api/profile/avatar`; tipo pela assinatura (PNG/JPEG/WebP; SVG/HTML recusados), 256 KB; CSP `img-src 'self' data: blob:` | `58b7738` |
+| Redis sem senha no Docker | `--requirepass` com `REDIS_PASSWORD` | `d7e7542` |
+| Docker só em modo desenvolvimento (HTTP, cookies sem `Secure`, Swagger aberto) | `docker-compose.prod.yml`: Caddy com HTTPS automático e HSTS, API em `production` (cookies `Secure`, Swagger desligado, sem porta exposta) | `25d1bc6` |
 
-## Decisões registradas (12/11/2026)
+**Verificação:** 160 testes no backend; 22 cenários ponta a ponta em Chromium, Firefox e WebKit; os mesmos 22 contra a instalação de produção em HTTPS (Chromium e Firefox); `entrega/ataques-seguranca.py` com 44 ataques, todos bloqueados na instalação de produção.
+
+### O que continua (consciente)
+
+- **XSS ainda age dentro da página:** com o token em HttpOnly, um script injetado não consegue roubá-lo, mas poderia fazer requisições como a pessoa enquanto a página estiver aberta. A CSP com nonce é a barreira para isso.
+- **Certificado local em `SITE_ADDRESS=localhost`:** o navegador avisa; num domínio de verdade o Caddy emite um certificado Let's Encrypt.
+- **E-mail:** sem `SMTP_*` configurado, os e-mails de confirmação ficam no Mailpit.
+
+## Decisões registradas (12/11/2026) — revistas em 18/11/2026
+
+> As duas decisões abaixo foram revertidas em 18/11/2026 (ver tabela acima). Ficam como registro.
 
 1. **S5 — o access token continua legível por JavaScript.** Ele fica em `patchnotes_token`, porque o Axios o envia em `Authorization` e o WebSocket o manda na primeira mensagem. Mover para um cookie `HttpOnly` mudaria o contrato de `login`/`register`/`refresh`, o Axios, a autenticação do WebSocket e exigiria proteção CSRF; ficou decidido manter o estado atual.
    - Mitigações em vigor: CSP com nonce sem `'unsafe-inline'`/`'unsafe-eval'` em scripts, `Secure` em HTTPS, `SameSite=Strict`, access token de 15 min e refresh token em cookie `HttpOnly`.

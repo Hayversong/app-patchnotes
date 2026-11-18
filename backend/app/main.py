@@ -24,12 +24,14 @@ from app.services.llm_service import LLMService, OllamaService
 API_DESCRIPTION = """
 API do Patchnotes: autenticação JWT, devlog, chat com LLM local (Ollama), métricas do dashboard e sistema de tokens.
 
-**Autenticação:** `POST /api/auth/login` devolve o access token (enviar como `Authorization: Bearer <token>`)
-e grava o refresh token em cookie httpOnly. `POST /api/auth/refresh` renova; `POST /api/auth/logout` revoga.
+**Autenticação:** `POST /api/auth/login` grava os cookies HttpOnly `patchnotes_access` (JWT) e `patchnotes_refresh`;
+o token não vem no corpo. Pelo Swagger, depois do login os cookies já valem; scripts podem mandar
+`Authorization: Bearer <valor do cookie>`. Escritas autenticadas pelo cookie precisam vir do próprio site (CSRF).
+O cadastro (`/api/auth/register`) envia um link de confirmação; a conta nasce em `/api/auth/verify-email`.
 
 **Chat em tempo real — `ws://<host>/ws/chat`** (WebSocket não aparece na lista abaixo):
 
-1. cliente → `{"type": "auth", "token": "<access token>"}` · servidor → `{"type": "ready"}`
+1. cliente → `{"type": "auth"}` (cookie do handshake) ou `{"type": "auth", "token": "..."}` · servidor → `{"type": "ready"}`
 2. cliente → `{"type": "message", "message": "...", "context": "..."}`
 3. servidor → `{"type": "start"}`, vários `{"type": "token", "content": "..."}` e por fim
    `{"type": "done", "done": true, "tokens": n, "message": {...}}`

@@ -2,6 +2,14 @@
 
 Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit ou indica que a mudança foi feita no ambiente, fora do repositório.
 
+## 18/11/2026 — correção dos riscos residuais (branch `develop`)
+
+- `d7e7542` Redis do Docker com senha.
+- `e35459e`, `03e6f70` Access token em cookie HttpOnly (fora do corpo e do JavaScript), proteção CSRF nas escritas por cookie e no login, WebSocket pelo cookie do handshake. Cadastro com confirmação por e-mail (resposta idêntica para qualquer e-mail; migration 0005) e tela `/verify-email`.
+- `58b7738` Foto de perfil por upload (migration 0006), CSP `img-src` só do próprio site; logout espera a API e recarrega a página.
+- `25d1bc6` `docker-compose.prod.yml` com Caddy (HTTPS, HSTS), API em produção e Swagger desligado.
+- Verificação: 160 testes no backend, 31 unitários, 22 cenários E2E em Chromium, Firefox e WebKit (também contra a produção em HTTPS) e 44 ataques bloqueados.
+
 ## 18/11/2026 — vistoria de segurança (branch `develop`)
 
 - **Dependências:** Next 15.5.29 e React 19 (Next 14 tinha 3 alertas de execução remota de código); `shadcn` CLI fora da produção; `npm audit` e `pip-audit` sem vulnerabilidades.

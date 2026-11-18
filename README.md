@@ -24,11 +24,11 @@ Este repositório junta as duas partes do projeto: o **frontend** em Next.js (Pa
 
 ## O que o sistema faz
 
-- Autenticação JWT de ponta a ponta: cadastro, login, renovação automática da sessão (refresh token em cookie httpOnly, rotacionado a cada uso), logout que revoga a sessão no servidor e recuperação de senha por e-mail.
+- Autenticação JWT de ponta a ponta: cadastro com confirmação por e-mail, login, renovação automática da sessão e logout que revoga a sessão no servidor, além de recuperação de senha. Os dois tokens ficam em cookies HttpOnly, que o JavaScript não lê; o refresh é rotacionado a cada uso.
 - Assistente com streaming: a resposta do modelo chega token a token por WebSocket (`/ws/chat`). O campo de mensagem fica bloqueado enquanto o modelo responde, um indicador de "digitando" aparece, e se a conexão cair a tela avisa e tenta reconectar sozinha. O histórico vem do banco via REST ao abrir a tela. Cada mensagem mostra quantos tokens consumiu.
 - Dashboard com dados reais: devlogs registrados, tokens consumidos (com gráfico de 7 ou 30 dias), tempo de uso, mensagens trocadas, sequência de dias ativos, heatmap de atividade e entradas por marcador.
 - Sistema de tokens: saldo do mês (cota mensal + recargas − consumo), extrato com o consumo de cada resposta e as recargas, e recarga simulada em pacotes. Com o saldo zerado o chat é bloqueado (429).
-- Devlog e perfil: criação e listagem de entradas com marcadores; edição de nome, bio, avatar e GitHub.
+- Devlog e perfil: criação e listagem de entradas com marcadores; edição de nome, bio e GitHub, e foto de perfil enviada como arquivo.
 - Tratamento de erros: 401 renova a sessão ou leva ao login; 500 mostra mensagem com botão de tentar de novo; queda do WebSocket mostra aviso e reconecta.
 
 ## Stack
@@ -39,7 +39,7 @@ Este repositório junta as duas partes do projeto: o **frontend** em Next.js (Pa
 | Backend | Python 3.14, FastAPI (assíncrono), SQLAlchemy 2 async + asyncpg, Alembic, Pydantic v2, PyJWT, Argon2 |
 | Banco e infraestrutura | PostgreSQL 17, Redis 7 (limites de requisição e de conexões), Mailpit (e-mail de desenvolvimento) |
 | LLM | Ollama com `qwen2.5:3b` (local, sem chave de API) |
-| Qualidade | pytest (140 testes contra PostgreSQL real), Vitest (29 testes unitários), Playwright (17 cenários ponta a ponta em Chromium, Firefox e WebKit), ESLint, `tsc --noEmit`, GitHub Actions |
+| Qualidade | pytest (160 testes contra PostgreSQL real), Vitest (31 testes unitários), Playwright (22 cenários ponta a ponta em Chromium, Firefox e WebKit), ESLint, `tsc --noEmit`, GitHub Actions |
 
 ## Arquitetura
 
@@ -106,7 +106,7 @@ Na primeira subida, o serviço `ollama-pull` baixa o modelo (cerca de 2 GB). O c
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ```
 
-Para criar a conta de demonstração (`dev@patchnotes.dev` / `patchnotes123`, com algumas entradas de devlog):
+Para criar uma conta, cadastre-se em http://localhost:3000/register e abra o link de confirmação que chega no Mailpit (http://localhost:8025). Ou crie direto a conta de demonstração (`dev@patchnotes.dev` / `patchnotes123`, com algumas entradas de devlog):
 
 ```bash
 docker compose exec backend python -m app.scripts.seed
@@ -154,6 +154,15 @@ npm run dev                          # http://localhost:3000
 
 Detalhes do backend (segurança, limites, cálculo das métricas, desempenho do LLM) estão em [`backend/README.md`](backend/README.md).
 
+### Produção (HTTPS)
+
+```bash
+# no .env: SITE_ADDRESS=seu.dominio.com (DNS apontando para o servidor) e SMTP_* de um provedor de e-mail
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Troca o nginx pelo Caddy nas portas 80 e 443, com certificado HTTPS automático (Let's Encrypt; em `localhost`, uma CA local) e HSTS. A API sobe em `ENVIRONMENT=production`: cookies `Secure`, CORS só do endereço do site, Swagger desligado e nenhuma porta exposta além do Caddy.
+
 ## Variáveis de ambiente
 
 - [`.env.example`](.env.example) (raiz): frontend (`API_URL`, `NEXT_PUBLIC_CHAT_WS_URL`) e as variáveis do `docker compose`.
@@ -193,8 +202,8 @@ npm run test:e2e
 ```
 
 - Sem GPU, use o Ollama falso, que responde sempre o mesmo texto em streaming: `node e2e/fake-ollama.mjs` e `OLLAMA_URL=http://127.0.0.1:11434` na API.
-- Outro endereço: `E2E_BASE_URL=http://localhost:3001 npm run test:e2e`. Para incluir o WebKit (Safari): `E2E_BROWSERS=chromium,firefox,webkit`.
-- Cada execução cria contas novas, e o cadastro tem limite de 10 por hora por IP. Para repetir várias vezes seguidas no Docker, zere os limites com `docker compose exec redis redis-cli FLUSHALL`.
+- Outro endereço: `E2E_BASE_URL=http://localhost:3001 npm run test:e2e`. Contra a instalação de produção local: `E2E_BASE_URL=https://localhost E2E_IGNORE_HTTPS_ERRORS=1`. Para incluir o WebKit (Safari): `E2E_BROWSERS=chromium,firefox,webkit`.
+- O cadastro passa pelo link de confirmação lido na API do Mailpit (`E2E_MAILPIT_URL`, padrão http://localhost:8025). Cada execução cria contas novas, e o cadastro tem limite de 10 por hora por IP. Para repetir várias vezes seguidas no Docker, zere os limites com `docker compose exec redis redis-cli FLUSHALL`.
 
 A CI (`.github/workflows/ci.yml`) roda tudo isso a cada pull request: pytest e conferência das migrations, lint, tipos, unitários e build do frontend, e o Playwright em Chromium, Firefox e WebKit com o Ollama falso.
 
@@ -204,4 +213,4 @@ A suíte ponta a ponta completa passa em Chromium, Firefox e WebKit (motor do Sa
 
 ## Segurança
 
-Resumo das decisões em [`docs/SEGURANCA.md`](docs/SEGURANCA.md): senhas com Argon2id, refresh token rotacionado com detecção de reuso, Content-Security-Policy com nonce, limites de requisição e de conexões WebSocket no Redis, IP do cliente lido só de proxies confiáveis, e nenhum segredo no repositório.
+Resumo das decisões em [`docs/SEGURANCA.md`](docs/SEGURANCA.md): senhas com Argon2id, tokens só em cookies HttpOnly com proteção CSRF, refresh token rotacionado com detecção de reuso, cadastro que não revela e-mails existentes, Content-Security-Policy com nonce e sem imagens de fora, limites de requisição e de conexões WebSocket no Redis (com senha), IP do cliente lido só de proxies confiáveis, HTTPS na configuração de produção, e nenhum segredo no repositório.
