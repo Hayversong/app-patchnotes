@@ -1,0 +1,35 @@
+# Entrada de produção (docker-compose.prod.yml): HTTPS automático.
+# - SITE_ADDRESS=localhost (padrão): certificado de uma CA local do Caddy (o navegador avisa; serve para testar).
+# - SITE_ADDRESS=patchnotes.seudominio.com: certificado Let's Encrypt emitido e renovado sozinho
+#   (o DNS precisa apontar para este servidor, com as portas 80 e 443 abertas).
+# O Caddy ignora X-Forwarded-For vindo do cliente e grava o IP real; a API confia só neste proxy (TRUSTED_PROXIES).
+
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	# Corpo máximo: 300 KB só no upload do avatar; 64 KB no resto (a API confere de novo).
+	@avatar path /api/profile/avatar
+	request_body @avatar {
+		max_size 300KB
+	}
+	@rest not path /api/profile/avatar
+	request_body @rest {
+		max_size 64KB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+		-X-Powered-By
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /ws/* {
+		reverse_proxy backend:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

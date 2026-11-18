@@ -1,0 +1,42 @@
+# Produção: soma-se ao docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# O que muda em relação ao desenvolvimento:
+# - Caddy no lugar do nginx, com HTTPS (portas 80 e 443); o certificado sai sozinho (veja docker/Caddyfile).
+# - API em ENVIRONMENT=production: cookies Secure, CORS só do endereço do site, Redis obrigatório e
+#   Swagger desligado. A API não fica exposta direto (só pelo Caddy).
+# - E-mail por um SMTP de verdade (SMTP_* no .env), não o Mailpit.
+#
+# No .env: SITE_ADDRESS (padrão localhost), JWT_SECRET, POSTGRES_PASSWORD, REDIS_PASSWORD e SMTP_*.
+services:
+  proxy:
+    image: caddy:2.10.2-alpine
+    volumes: !override
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    ports: !override
+      - "80:80"
+      - "443:443"
+
+  backend:
+    environment:
+      ENVIRONMENT: production
+      COOKIE_SECURE: "true"
+      CORS_ORIGINS: https://${SITE_ADDRESS:-localhost}
+      FRONTEND_URL: https://${SITE_ADDRESS:-localhost}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      MAIL_FROM: ${MAIL_FROM:-Patchnotes <no-reply@patchnotes.local>}
+    ports: !reset []
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -25,6 +25,8 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
+    // Instalação de produção local (Caddy com certificado da CA interna): E2E_IGNORE_HTTPS_ERRORS=1.
+    ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === "1",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     locale: "pt-BR",
