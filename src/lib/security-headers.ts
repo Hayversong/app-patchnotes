@@ -10,13 +10,13 @@
  * - Só em desenvolvimento: 'unsafe-eval' (React Refresh/webpack), ws: (HMR) e http: em imagens.
  */
 
+import { chatSocketUrl } from "@/lib/config";
+
 export const NONCE_HEADER = "x-nonce";
 
 function websocketOrigin(): string | null {
-  const url = process.env.NEXT_PUBLIC_CHAT_WS_URL;
-  if (!url) return null;
   try {
-    return new URL(url).origin.replace(/^http/, "ws");
+    return new URL(chatSocketUrl).origin.replace(/^http/, "ws");
   } catch {
     return null;
   }
@@ -32,7 +32,6 @@ export function buildContentSecurityPolicy(nonce: string, isDev: boolean): strin
     "img-src": ["'self'", "data:", "blob:", "https:", ...(isDev ? ["http:"] : [])],
     "font-src": ["'self'", "data:"],
     "connect-src": ["'self'", ...(chatSocket ? [chatSocket] : []), ...(isDev ? ["ws:"] : [])],
-    // Service worker do MSW (desenvolvimento) é servido pelo próprio app.
     "worker-src": ["'self'"],
     "object-src": ["'none'"],
     "base-uri": ["'self'"],

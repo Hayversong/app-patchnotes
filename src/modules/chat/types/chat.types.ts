@@ -19,6 +19,12 @@ export type SendChatResponse = ChatMessage & {
   tokensUsed: number;
 };
 
+/**
+ * Estado da conexão do chat: connecting (abrindo), open (pronta), reconnecting (caiu; nova tentativa agendada),
+ * idle (fechada por inatividade; reabre no próximo envio) e closed (sessão encerrada).
+ */
+export type ChatSocketStatus = "connecting" | "open" | "reconnecting" | "idle" | "closed";
+
 /** Eventos enviados pelo servidor em /ws/chat (ver docs/API_CONTRACTS.md, Parte 2). */
 export type ChatSocketServerEvent =
   | { type: "ready" }

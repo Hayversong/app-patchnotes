@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Bot, Send, UserRound } from "lucide-react";
+import { Bot, RefreshCw, Send, UserRound, WifiOff } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -13,10 +13,10 @@ import { EmptyState, ErrorState, Feedback, LoadingState } from "@/components/ui/
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formOptions } from "@/lib/form-options";
-import { isChatStreaming, useChatHistory, useSendChatMessage } from "@/modules/chat/hooks/use-chat";
+import { useChatHistory, useChatSocket, useSendChatMessage } from "@/modules/chat/hooks/use-chat";
 import { ChatStreamError } from "@/modules/chat/services/chat-socket";
 import { chatSchema, type ChatFormData } from "@/modules/chat/schemas/chat.schema";
-import type { ChatMessage } from "@/modules/chat/types/chat.types";
+import type { ChatMessage, ChatSocketStatus } from "@/modules/chat/types/chat.types";
 
 function TypingDots({ compact = false }: { compact?: boolean }) {
   const reduced = useReducedMotion();
@@ -45,9 +45,21 @@ function MessageBubble({ message, onTypingComplete, typing = true }: { message: 
     {message.role === "assistant" && <Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" />}
     <div className={cn("min-w-0 max-w-2xl rounded-xl border px-4 py-3 text-sm leading-6", message.role === "assistant" ? "border-zinc-800 bg-zinc-950" : "border-lime-400/30 bg-lime-400/10")}>
       {message.role === "assistant" && typing ? <AssistantText content={message.content} onComplete={onTypingComplete} /> : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
+      {typeof message.tokensUsed === "number" && <p className="mt-2 font-mono text-[11px] text-zinc-500" title={message.role === "user" ? "Tokens de entrada: sistema, contexto, histórico e sua mensagem" : "Tokens gerados na resposta"}>{message.tokensUsed.toLocaleString("pt-BR")} tokens</p>}
     </div>
     {message.role === "user" && <UserRound aria-hidden="true" className="mt-1 size-5 shrink-0 text-zinc-400" />}
   </motion.article>;
+}
+
+/** Aviso de conexão: aparece quando o WebSocket cai e some sozinho quando a reconexão dá certo. */
+function ConnectionNotice({ status, attempt, onReconnect }: { status: ChatSocketStatus; attempt: number; onReconnect: () => void }) {
+  if (status === "open" || status === "idle") return null;
+  if (status === "connecting") return <p role="status" className="mt-6 flex items-center gap-2 text-xs text-zinc-400"><TypingDots compact /> Conectando ao assistente...</p>;
+  const message = status === "closed" ? "Conexão encerrada. Entre novamente para continuar." : `Conexão com o assistente perdida. Tentando reconectar${attempt > 1 ? ` (tentativa ${attempt})` : ""}...`;
+  return <div role="alert" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+    <span className="flex items-center gap-2"><WifiOff aria-hidden="true" className="size-4 shrink-0" />{message}</span>
+    {status === "reconnecting" && <Button type="button" variant="outline" size="sm" onClick={onReconnect}><RefreshCw aria-hidden="true" className="size-3.5" />Reconectar agora</Button>}
+  </div>;
 }
 
 export function ChatView() {
@@ -57,7 +69,11 @@ export function ChatView() {
   // Respostas já mostradas via streaming não repetem a animação de digitação.
   const [streamedIds, setStreamedIds] = useState<ReadonlySet<string>>(() => new Set());
   const chatHistory = useChatHistory();
-  const sendMessage = useSendChatMessage();
+  const connection = useChatSocket();
+  const sendMessage = useSendChatMessage(connection.socket);
+  // "idle" reabre no próximo envio; nos demais estados sem conexão o envio espera a reconexão.
+  const canSend = connection.status === "open" || connection.status === "idle";
+  const inputLocked = sendMessage.isPending || !canSend;
   const reduced = useReducedMotion();
   const nearBottomRef = useRef(true);
   const { register, handleSubmit, reset, setFocus, formState: { errors, touchedFields, isSubmitted } } = useForm<ChatFormData>({ ...formOptions, resolver: zodResolver(chatSchema), defaultValues: { message: "" } });
@@ -78,19 +94,18 @@ export function ChatView() {
   useEffect(() => { if (streaming?.answer) requestAnimationFrame(() => scrollToEnd(true)); }, [streaming?.answer, scrollToEnd]);
 
   const onSubmit = handleSubmit(async ({ message }) => {
-    if (sendMessage.isPending) return;
+    if (inputLocked) return;
     setServerError(null);
     // Quem acabou de enviar quer ver a resposta: salta para o fim (instantâneo, para o listener de scroll
     // não interpretar posições intermediárias de uma rolagem suave como "a pessoa subiu a conversa").
     nearBottomRef.current = true;
     scrollToEnd(true);
-    if (isChatStreaming) setStreaming({ question: message, answer: "" });
+    setStreaming({ question: message, answer: "" });
     try {
       await sendMessage.mutateAsync({
         message,
         onToken: (content) => setStreaming((current) => current && { ...current, answer: current.answer + content }),
         onComplete: (answer) => {
-          if (!isChatStreaming) return;
           setStreamedIds((ids) => new Set(ids).add(answer.id));
           setStreaming((current) => current && { ...current, answerId: answer.id });
         },
@@ -122,10 +137,11 @@ export function ChatView() {
         {sendMessage.isPending && !streaming?.answer && <motion.article key="processing" role="status" aria-label="Assistente processando" className="flex gap-3" initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: reduced ? 0 : 0.15 }}><Bot aria-hidden="true" className="mt-1 size-5 shrink-0 text-lime-400" /><div className="flex h-12 items-center rounded-xl border border-zinc-800 bg-zinc-950 px-4"><TypingDots /></div></motion.article>}
       </AnimatePresence>
     </section>
+    <ConnectionNotice status={connection.status} attempt={connection.attempt} onReconnect={connection.reconnectNow} />
     <form onSubmit={onSubmit} onChange={() => setServerError(null)} aria-busy={sendMessage.isPending} className="sticky bottom-0 mt-6 space-y-3 border-t border-zinc-800 bg-background py-4" noValidate>
-      <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} disabled={sendMessage.isPending} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={touchedFields.message || isSubmitted ? errors.message?.message : undefined} {...register("message")} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!sendMessage.isPending) event.currentTarget.form?.requestSubmit(); } }} />
+      <TextareaField id="message" label="Sua mensagem" placeholder="Descreva uma mecânica ou conte o que você desenvolveu..." rows={3} disabled={inputLocked} hint="Até 2.000 caracteres. Enter envia; Shift + Enter insere uma nova linha." error={touchedFields.message || isSubmitted ? errors.message?.message : undefined} {...register("message")} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!inputLocked) event.currentTarget.form?.requestSubmit(); } }} />
       {serverError && <Feedback error>{serverError}</Feedback>}
-      <div className="flex justify-end"><Button type="submit" disabled={sendMessage.isPending} aria-busy={sendMessage.isPending}><span className="relative flex size-4 items-center justify-center"><AnimatePresence initial={false} mode="wait">{sendMessage.isPending ? <motion.span key="dots" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TypingDots compact /></motion.span> : <motion.span key="send" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Send aria-hidden="true" className="size-4" /></motion.span>}</AnimatePresence></span>{sendMessage.isPending ? "Enviando..." : "Enviar mensagem"}</Button></div>
+      <div className="flex justify-end"><Button type="submit" disabled={inputLocked} aria-busy={sendMessage.isPending}><span className="relative flex size-4 items-center justify-center"><AnimatePresence initial={false} mode="wait">{sendMessage.isPending ? <motion.span key="dots" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TypingDots compact /></motion.span> : <motion.span key="send" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Send aria-hidden="true" className="size-4" /></motion.span>}</AnimatePresence></span>{sendMessage.isPending ? "Assistente digitando..." : canSend ? "Enviar mensagem" : "Aguardando conexão..."}</Button></div>
     </form>
   </div>;
 }
