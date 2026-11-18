@@ -14,10 +14,29 @@ from app.core.middleware import BodySizeLimitMiddleware
 from app.core.connection_limits import MemoryConnectionSlots, RedisConnectionSlots
 from app.core.rate_limit import MemoryRateLimiter, RateLimiter, RedisRateLimiter
 from app.db.session import create_engine, create_sessionmaker
-from app.routers import auth, chat, dashboard, devlog, profile, ws_chat
+from app.routers import auth, chat, dashboard, devlog, profile, tokens, ws_chat
 from app.services.chat_service import ChatService
 from app.services.email_service import Mailer, SmtpMailer
 from app.services.llm_service import LLMService, OllamaService
+
+
+API_DESCRIPTION = """
+API do Patchnotes: autenticação JWT, devlog, chat com LLM local (Ollama), métricas do dashboard e sistema de tokens.
+
+**Autenticação:** `POST /api/auth/login` devolve o access token (enviar como `Authorization: Bearer <token>`)
+e grava o refresh token em cookie httpOnly. `POST /api/auth/refresh` renova; `POST /api/auth/logout` revoga.
+
+**Chat em tempo real — `ws://<host>/ws/chat`** (WebSocket não aparece na lista abaixo):
+
+1. cliente → `{"type": "auth", "token": "<access token>"}` · servidor → `{"type": "ready"}`
+2. cliente → `{"type": "message", "message": "...", "context": "..."}`
+3. servidor → `{"type": "start"}`, vários `{"type": "token", "content": "..."}` e por fim
+   `{"type": "done", "done": true, "tokens": n, "message": {...}}`
+4. erros recuperáveis: `{"type": "error", "code": "...", "message": "..."}`
+
+Códigos de fechamento: 4401 (token inválido/expirado), 4408 (inatividade), 4429 (conexões demais).
+O histórico é carregado via REST em `GET /api/chat/history`.
+"""
 
 
 def create_app(
@@ -52,10 +71,11 @@ def create_app(
         title="Patchnotes API",
         version="2.0.0",
         lifespan=lifespan,
-        # Documentação interativa só fora de produção.
-        docs_url=None if settings.is_production else "/api/docs",
+        description=API_DESCRIPTION,
+        # Swagger em /docs. Em produção fica desligado, a menos que API_DOCS=true.
+        docs_url="/docs" if settings.api_docs_enabled else None,
         redoc_url=None,
-        openapi_url=None if settings.is_production else "/api/openapi.json",
+        openapi_url="/openapi.json" if settings.api_docs_enabled else None,
     )
     app.state.settings = settings
 
@@ -70,7 +90,7 @@ def create_app(
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api")
-    for module in (auth, profile, devlog, chat, dashboard):
+    for module in (auth, profile, devlog, chat, dashboard, tokens):
         api.include_router(module.router)
     app.include_router(api)
     app.include_router(ws_chat.router)

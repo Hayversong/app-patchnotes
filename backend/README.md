@@ -81,7 +81,7 @@ RandomizedDelaySec=300
 WantedBy=timers.target
 ```
 
-Documentação interativa (fora de produção): http://127.0.0.1:8000/api/docs. E-mails de desenvolvimento: http://localhost:8025.
+Swagger (fora de produção, ou com `API_DOCS=true`): http://127.0.0.1:8000/docs. E-mails de desenvolvimento: http://localhost:8025.
 
 ### Ollama
 

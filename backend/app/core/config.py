@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     chat_context_messages: int = Field(default=6, ge=0, le=50)
     chat_history_max: int = Field(default=200, ge=1, le=1000)
     monthly_token_quota: int = Field(default=100_000, ge=0)
+    # Teto de tokens que a recarga simulada pode somar no mês (protege contra cota infinita).
+    monthly_token_credit_cap: int = Field(default=500_000, ge=0)
+    # Swagger (/docs). None = ligado fora de produção e desligado em produção.
+    api_docs: bool | None = None
 
     ws_auth_timeout_seconds: float = Field(default=5, gt=0)
     ws_max_frame_bytes: int = Field(default=16 * 1024, ge=1024)
@@ -120,6 +124,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        return self.api_docs if self.api_docs is not None else not self.is_production
 
 
 @lru_cache

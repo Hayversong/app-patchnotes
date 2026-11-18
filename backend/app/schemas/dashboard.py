@@ -40,5 +40,6 @@ class TokenBalanceResponse(ApiModel):
     balance: int
     limit: int
     used: int
+    credits: int = 0
     period_start: UtcDateTime
     period_end: UtcDateTime

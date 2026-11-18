@@ -31,4 +31,4 @@ async def entries_by_tag(user: CurrentUser, session: SessionDep) -> EntriesByTag
 @router.get("/token-balance", response_model=TokenBalanceResponse)
 async def token_balance(user: CurrentUser, session: SessionDep, settings: SettingsDep) -> TokenBalanceResponse:
     balance = await quota_service.get_balance(session, user.id, settings.monthly_token_quota)
-    return TokenBalanceResponse(balance=balance.balance, limit=balance.limit, used=balance.used, period_start=balance.period_start, period_end=balance.period_end)
+    return TokenBalanceResponse(balance=balance.balance, limit=balance.limit, used=balance.used, credits=balance.credits, period_start=balance.period_start, period_end=balance.period_end)
