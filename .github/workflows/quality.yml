@@ -1,0 +1,40 @@
+name: Quality
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Configurar Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Checagem de tipos
+        run: npx tsc --noEmit
+
+      - name: Testes da saudação
+        run: npm run test:greeting
+
+      - name: Testes dos handlers e contratos do MSW
+        run: npm run test:mocks
+
+      - name: Build
+        run: npm run build

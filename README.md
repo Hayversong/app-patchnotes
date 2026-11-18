@@ -1,5 +1,7 @@
 # Patchnotes
 
+[![Quality](https://github.com/Hayversong/app-patchnotes/actions/workflows/quality.yml/badge.svg)](https://github.com/Hayversong/app-patchnotes/actions/workflows/quality.yml)
+
 O Patchnotes é uma aplicação web para organizar e acompanhar o desenvolvimento de jogos. A proposta é reunir, em um único espaço, o progresso do projeto, anotações de desenvolvimento, métricas de uso e um assistente para apoiar a criação e validação de mecânicas.
 
 O projeto está sendo desenvolvido com Next.js e possui uma API simulada para permitir a evolução da interface antes da integração com o backend definitivo.
