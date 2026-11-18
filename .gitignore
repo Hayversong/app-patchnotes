@@ -4,10 +4,15 @@
 .codex/
 .agents/
 .docs/
-/docs/
+/docs/*
 *.md
 checkpoint.md
 !README.md
+# Contratos da API: fonte única entre frontend e backend, versionada.
+!/docs/API_CONTRACTS.md
+!/docs/CHANGELOG.md
+!/docs/REVISAO_ARQUITETURA_SEGURANCA.md
+!/docs/SEGURANCA.md
 !**/LICENSE.md
 !**/LICENCE.md
 
@@ -47,3 +52,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# backend (Python)
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

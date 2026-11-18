@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 export const devlogSchema = z.object({
   title: z.string().min(3, { message: "O título deve ter no mínimo 3 caracteres" }),

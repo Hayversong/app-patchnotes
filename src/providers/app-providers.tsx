@@ -4,11 +4,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "motion/react";
 import { useEffect, useState } from "react";
 
+import { isMockApiEnabled as useMockApi } from "@/lib/api-mode";
 import { createQueryClient } from "@/lib/queryClient";
 import { ErrorState, LoadingState } from "@/components/ui/feedback";
 
 const queryClient = createQueryClient();
-const isDevelopment = process.env.NODE_ENV === "development";
 /** Prazo para o worker confirmar a ativação. Esgotado, a inicialização é tratada como falha (nunca liberada). */
 const MOCK_START_TIMEOUT_MS = 10_000;
 
@@ -43,12 +43,12 @@ function startMockWorkerOnce(): Promise<void> {
 }
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<MockStatus>(isDevelopment ? { state: "starting" } : { state: "ready" });
+  const [status, setStatus] = useState<MockStatus>(useMockApi ? { state: "starting" } : { state: "ready" });
   const [attempt, setAttempt] = useState(0);
   const [MockBadge, setMockBadge] = useState<React.ComponentType | null>(null);
 
   useEffect(() => {
-    if (!isDevelopment) return;
+    if (!useMockApi) return;
     let active = true;
     setStatus({ state: "starting" });
 

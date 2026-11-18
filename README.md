@@ -17,7 +17,7 @@ O projeto está sendo desenvolvido com Next.js e possui uma API simulada para pe
 - Dashboard com métricas de entradas, tokens, tempo ativo e mensagens.
 - Saudação personalizada de acordo com horário e usuário.
 - Devlog com listagem, criação de entradas, marcadores, validação e feedback.
-- Assistente com envio por `Enter`, quebra de linha com `Shift + Enter`, processamento e contagem de tokens.
+- Assistente com envio por `Enter`, quebra de linha com `Shift + Enter`, processamento, contagem de tokens e resposta em streaming (WebSocket) quando ligado ao backend real.
 - Perfil com edição de nome, biografia, avatar e GitHub.
 - Estados de carregamento, erro, nova tentativa e estado vazio nas telas.
 
@@ -41,18 +41,21 @@ O projeto está sendo desenvolvido com Next.js e possui uma API simulada para pe
 - Cenários simulados reproduzíveis de sucesso, vazio, payload inválido (400), sessão expirada (401) e erro de servidor (500).
 - Testes automatizados para a função de saudação e para os handlers/contratos do MSW.
 
+### Backend (Parte 2)
+
+- API em FastAPI com PostgreSQL, migrations Alembic e validação Pydantic, implementando os mesmos contratos da Parte 1.
+- Autenticação com JWT, refresh token rotacionado em cookie httpOnly, recuperação de senha por e-mail e atualização de perfil.
+- Chat com LLM local (Ollama) via REST e via WebSocket `/ws/chat` com streaming token a token; mensagens e consumo de tokens persistidos.
+- Métricas do dashboard, histórico de consumo e saldo mensal de tokens.
+- No frontend: renovação automática da sessão (`/auth/refresh`), logout que revoga a sessão no servidor e telas `/forgot-password` e `/reset-password`.
+- Detalhes em [`backend/README.md`](backend/README.md).
+
 ## O que será implementado
 
-- Substituição da API simulada por um backend persistente.
-- Banco de dados para usuários, perfis, métricas e entradas do devlog.
-- Integração do assistente com um modelo de IA real.
-- Persistência de mensagens, histórico de conversas e consumo de tokens.
 - Edição e gerenciamento completo das entradas do devlog.
 - Upload e armazenamento de imagens de perfil.
-- Métricas e gráficos mais completos sobre a evolução do projeto.
-- Maior cobertura de testes unitários, de integração e end-to-end.
-- Validação visual em diferentes tamanhos de tela e navegadores.
-- Configuração de ambiente, autenticação de produção e publicação da aplicação.
+- Maior cobertura de testes end-to-end.
+- Configuração de ambiente de produção e publicação da aplicação.
 
 ## Tecnologias
 
@@ -61,6 +64,7 @@ O projeto está sendo desenvolvido com Next.js e possui uma API simulada para pe
 - TanStack React Query e Zustand
 - React Hook Form e Zod
 - Axios, Motion e MSW
+- Backend: Python, FastAPI, SQLAlchemy (async), PostgreSQL, Alembic, Pydantic e Ollama
 
 ## Como executar
 
@@ -82,6 +86,14 @@ Depois, acesse [http://localhost:3000](http://localhost:3000) e entre com `hayve
 Em desenvolvimento (`npm run dev`), o app só exibe as telas depois que o Mock Service Worker confirma que está interceptando as requisições. Se o worker não iniciar (por exemplo, sem `public/mockServiceWorker.js` ou com service workers bloqueados), aparece a tela "A API simulada não iniciou" com o motivo e o botão **Tentar novamente**; nenhuma chamada é feita sem mock. Para recriar o worker: `npx msw init public`.
 
 Os dados simulados ficam na memória da aba e são reiniciados ao recarregar a página.
+
+Para usar o backend real em vez do MSW, suba a API (veja [`backend/README.md`](backend/README.md)) e rode:
+
+```bash
+API_URL=http://127.0.0.1:8000 NEXT_PUBLIC_API_MOCKING=disabled NEXT_PUBLIC_CHAT_WS_URL=ws://127.0.0.1:8000/ws/chat npm run dev
+```
+
+Com `NEXT_PUBLIC_CHAT_WS_URL`, o assistente mostra a resposta token a token via WebSocket. Sem ela, ou com o MSW, o chat usa a rota REST.
 
 Para ver estados de erro e vazio, abra qualquer página com o parâmetro `mock`:
 
@@ -107,6 +119,7 @@ npm run test:mocks     # testa handlers e contratos do MSW (requer Bun)
 ## Estrutura principal
 
 ```text
+backend/                 # API FastAPI + PostgreSQL + Ollama (ver backend/README.md)
 docs/
 └── API_CONTRACTS.md     # contratos HTTP (endpoints, payloads, erros)
 src/
@@ -121,4 +134,4 @@ src/
 
 ## Status do projeto
 
-O frontend navegável e os principais fluxos de uso já estão implementados com dados simulados. A próxima etapa é consolidar o backend, a persistência dos dados e a integração real do assistente.
+O frontend funciona tanto com a API simulada (MSW) quanto com o backend real, com persistência em PostgreSQL e assistente via Ollama local. O frontend renova a sessão automaticamente e oferece recuperação de senha.

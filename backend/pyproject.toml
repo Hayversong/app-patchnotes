@@ -1,0 +1,12 @@
+[project]
+name = "patchnotes-backend"
+version = "2.0.0"
+description = "API do Patchnotes (FastAPI + PostgreSQL + Ollama)"
+requires-python = ">=3.12"
+# Dependências fixadas em requirements.txt / requirements-dev.txt.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]

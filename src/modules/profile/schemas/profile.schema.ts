@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 const optionalUrl = z.union([
   z.string().url({ message: "Informe uma URL válida" }),
