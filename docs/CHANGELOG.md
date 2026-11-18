@@ -2,6 +2,13 @@
 
 Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit ou indica que a mudança foi feita no ambiente, fora do repositório.
 
+## 18/11/2026 — vistoria de segurança (branch `develop`)
+
+- **Dependências:** Next 15.5.29 e React 19 (Next 14 tinha 3 alertas de execução remota de código); `shadcn` CLI fora da produção; `npm audit` e `pip-audit` sem vulnerabilidades.
+- **API:** `Cache-Control: no-store` e cabeçalhos de segurança em todas as respostas.
+- **Docker:** backend e frontend com `no-new-privileges` e `cap_drop: ALL`; nginx esconde `X-Powered-By`.
+- Detalhes, ataques testados e riscos residuais em `docs/SEGURANCA.md`.
+
 ## 18/11/2026 — testes e melhorias (branch `develop`)
 
 - **Testes do frontend:** Vitest com 30 testes (conexão do chat com WebSocket falso, renovação de sessão no Axios, CSP, endereço do WebSocket).

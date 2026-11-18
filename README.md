@@ -35,11 +35,11 @@ Este repositório junta as duas partes do projeto: o **frontend** em Next.js (Pa
 
 | Camada | Tecnologias |
 |---|---|
-| Frontend | Next.js 14 (App Router), React 18, TypeScript strict, Tailwind CSS, shadcn/ui + Base UI, TanStack Query, Zustand, React Hook Form + Zod, Axios, Recharts, Motion |
+| Frontend | Next.js 15 (App Router), React 19, TypeScript strict, Tailwind CSS, shadcn/ui + Base UI, TanStack Query, Zustand, React Hook Form + Zod, Axios, Recharts, Motion |
 | Backend | Python 3.14, FastAPI (assíncrono), SQLAlchemy 2 async + asyncpg, Alembic, Pydantic v2, PyJWT, Argon2 |
 | Banco e infraestrutura | PostgreSQL 17, Redis 7 (limites de requisição e de conexões), Mailpit (e-mail de desenvolvimento) |
 | LLM | Ollama com `qwen2.5:3b` (local, sem chave de API) |
-| Qualidade | pytest (137 testes contra PostgreSQL real), Vitest (29 testes unitários), Playwright (17 cenários ponta a ponta em Chromium, Firefox e WebKit), ESLint, `tsc --noEmit`, GitHub Actions |
+| Qualidade | pytest (140 testes contra PostgreSQL real), Vitest (29 testes unitários), Playwright (17 cenários ponta a ponta em Chromium, Firefox e WebKit), ESLint, `tsc --noEmit`, GitHub Actions |
 
 ## Arquitetura
 

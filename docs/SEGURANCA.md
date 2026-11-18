@@ -60,6 +60,29 @@ Outros cabeçalhos (`next.config.mjs`): `X-Content-Type-Options: nosniff`, `X-Fr
 
 `python -m app.scripts.cleanup`, agendado (ex.: a cada hora): exclusões em lote fora do caminho das requisições, seguro em várias réplicas. Exemplo de timer em `backend/README.md`.
 
+## Vistoria de 18/11/2026
+
+Varredura automática (`npm audit`, `pip-audit`, `bandit`), revisão do código e 40 ataques reais contra o ambiente Docker (script com JWT `alg=none` e adulterado, IDOR entre contas, URLs `javascript:`/`data:`, mass assignment, corpo gigante, valores de recarga arbitrários, CORS e CSRF de outra origem, WebSocket de outra origem, com token adulterado, mensagem e frame grandes demais, refresh depois do logout, cabeçalhos e endpoints expostos). Depois das correções, os 40 foram bloqueados.
+
+| Achado | Gravidade | Correção | Commit |
+|---|---|---|---|
+| Next.js 14.2 sem suporte: 24 alertas, incluindo 3 de execução remota de código no otimizador de imagens, SSRF em rewrites e WebSocket, XSS com nonce de CSP e DoS | crítica | Next 15.5.29 + React 19; otimizador de imagens desligado (`images.unoptimized`) | `f9974bf` |
+| `shadcn` (CLI) nas dependências de produção, levando hono, SDK do MCP e `systeminformation` para a imagem | alta | removido | `f9974bf` |
+| `zod`, `follow-redirects`, `qs`, `undici`, `postcss` (interno do Next) com alertas | média–alta | atualizados / `overrides`; `npm audit`: 0 | `f9974bf` |
+| Login, cadastro e refresh devolviam o access token sem `Cache-Control` | média | `no-store` em toda a API | `5b8d1f6` |
+| Respostas da API sem `nosniff`, `X-Frame-Options` e CSP | baixa | middleware de cabeçalhos (CSP `default-src 'none'`, exceto Swagger) | `5b8d1f6` |
+| Containers com capacidades padrão do kernel | baixa | `no-new-privileges` e `cap_drop: ALL` no backend e no frontend | `3f096a1` |
+| CSP com `upgrade-insecure-requests` em HTTP quebrava o Safari; formulários sem POST punham a senha na URL sem JavaScript | média | corrigidos na rodada de testes | `73d7535` |
+
+Conferido e sem problema: JWT com algoritmo fixo e verificação de expiração e versão de sessão; SQL sempre parametrizado; nenhum `dangerouslySetInnerHTML`, `eval` ou redirecionamento controlado pelo usuário; nenhum segredo no histórico do git; logs registram só o tipo do erro; respostas de erro sem stack trace; isolamento entre contas; `pip-audit` sem vulnerabilidades; avisos do `bandit` são falsos positivos (mensagens de texto e a senha do seed, que recusa rodar em produção).
+
+### Riscos residuais (conscientes)
+
+- **Ambiente Docker é de desenvolvimento:** HTTP, cookies sem `Secure` e Swagger ligado. Em produção: `ENVIRONMENT=production` (exige `COOKIE_SECURE=true`, segredo forte, CORS explícito e Redis; desliga o Swagger) e um proxy com HTTPS.
+- **Access token legível por JavaScript** (S5) e **409 no cadastro com e-mail existente**: decisões de 12/11, abaixo.
+- **Avatar por URL externa:** ao exibir o próprio avatar, o navegador busca a imagem no servidor informado, que fica sabendo o IP de quem vê. Só a própria pessoa vê o avatar.
+- **Redis sem senha** dentro da rede do Docker (porta não publicada). Em produção, use senha ou rede isolada.
+
 ## Decisões registradas (12/11/2026)
 
 1. **S5 — o access token continua legível por JavaScript.** Ele fica em `patchnotes_token`, porque o Axios o envia em `Authorization` e o WebSocket o manda na primeira mensagem. Mover para um cookie `HttpOnly` mudaria o contrato de `login`/`register`/`refresh`, o Axios, a autenticação do WebSocket e exigiria proteção CSRF; ficou decidido manter o estado atual.
