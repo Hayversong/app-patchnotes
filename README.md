@@ -1,137 +1,173 @@
 # Patchnotes
 
-O Patchnotes é uma aplicação web para organizar e acompanhar o desenvolvimento de jogos. A proposta é reunir, em um único espaço, o progresso do projeto, anotações de desenvolvimento, métricas de uso e um assistente para apoiar a criação e validação de mecânicas.
+Patchnotes é um diário de bordo para quem desenvolve jogos. Num só lugar a pessoa registra o progresso em devlogs, acompanha métricas reais do projeto e conversa com um assistente (um LLM rodando localmente) para discutir mecânicas, organizar ideias e transformar o que foi feito em notas de atualização.
 
-O projeto está sendo desenvolvido com Next.js e possui uma API simulada para permitir a evolução da interface antes da integração com o backend definitivo.
+Este repositório junta as duas partes do projeto: o **frontend** em Next.js (Parte 1) e o **backend** em FastAPI com PostgreSQL e Ollama (Parte 2), conectados de ponta a ponta. Não há API simulada: todas as telas consomem a API real.
 
-## O que já foi feito
+**Pitch (3 min):** _link do vídeo aqui_
 
-### Autenticação e acesso
+## Telas
 
-- Login e cadastro com validação.
-- Proteção das rotas autenticadas e redirecionamentos.
-- Controle de sessão com token e tratamento de sessão expirada.
+| Login | Dashboard |
+|---|---|
+| ![Tela de login](docs/prints/login.png) | ![Dashboard com métricas reais](docs/prints/dashboard.png) |
 
-### Funcionalidades principais
+| Assistente (streaming via WebSocket) | Tokens (saldo, extrato e recarga) |
+|---|---|
+| ![Chat com o assistente](docs/prints/chat.png) | ![Tela de tokens](docs/prints/tokens.png) |
 
-- Dashboard com métricas de entradas, tokens, tempo ativo e mensagens.
-- Saudação personalizada de acordo com horário e usuário.
-- Devlog com listagem, criação de entradas, marcadores, validação e feedback.
-- Assistente com envio por `Enter`, quebra de linha com `Shift + Enter`, processamento, contagem de tokens e resposta em streaming (WebSocket) quando ligado ao backend real.
-- Perfil com edição de nome, biografia, avatar e GitHub.
-- Estados de carregamento, erro, nova tentativa e estado vazio nas telas.
+| Aviso de queda do WebSocket (reconectando) | Devlog |
+|---|---|
+| ![Aviso de reconexão no chat](docs/prints/chat-reconectando.png) | ![Devlog](docs/prints/devlog.png) |
 
-### Interface e experiência
+![Swagger em /docs](docs/prints/swagger.png)
 
-- Tema escuro com identidade visual inspirada em ferramentas de desenvolvimento e HUDs de jogos.
-- Sidebar expansível e compacta, com tooltips e estado preservado durante a navegação.
-- Layout responsivo para desktop e telas menores.
-- Componentes reutilizáveis de formulário, cards, botões, badges, feedback e cabeçalhos.
-- Microinterações com suporte a `prefers-reduced-motion`.
-- Labels, foco, mensagens de erro e estados de interface tratados com atenção à acessibilidade.
+## O que o sistema faz
 
-### Base técnica
+- Autenticação JWT de ponta a ponta: cadastro, login, renovação automática da sessão (refresh token em cookie httpOnly, rotacionado a cada uso), logout que revoga a sessão no servidor e recuperação de senha por e-mail.
+- Assistente com streaming: a resposta do modelo chega token a token por WebSocket (`/ws/chat`). O campo de mensagem fica bloqueado enquanto o modelo responde, um indicador de "digitando" aparece, e se a conexão cair a tela avisa e tenta reconectar sozinha. O histórico vem do banco via REST ao abrir a tela. Cada mensagem mostra quantos tokens consumiu.
+- Dashboard com dados reais: devlogs registrados, tokens consumidos (com gráfico de 7 ou 30 dias), tempo de uso, mensagens trocadas, sequência de dias ativos, heatmap de atividade e entradas por marcador.
+- Sistema de tokens: saldo do mês (cota mensal + recargas − consumo), extrato com o consumo de cada resposta e as recargas, e recarga simulada em pacotes. Com o saldo zerado o chat é bloqueado (429).
+- Devlog e perfil: criação e listagem de entradas com marcadores; edição de nome, bio, avatar e GitHub.
+- Tratamento de erros: 401 renova a sessão ou leva ao login; 500 mostra mensagem com botão de tentar de novo; queda do WebSocket mostra aviso e reconecta.
 
-- Organização por módulos: `auth`, `dashboard`, `devlog`, `chat` e `profile`.
-- React Query para consultas e mutações e Zustand para estado global.
-- React Hook Form e Zod para formulários e validações.
-- Axios para comunicação com a API.
-- Mock Service Worker (MSW) com endpoints simulados de autenticação, dashboard, devlog, chat e perfil.
-- Contratos da API documentados em [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md), fonte única para o backend da próxima etapa.
-- Cenários simulados reproduzíveis de sucesso, vazio, payload inválido (400), sessão expirada (401) e erro de servidor (500).
-- Testes automatizados para a função de saudação e para os handlers/contratos do MSW.
+## Stack
 
-### Backend (Parte 2)
+| Camada | Tecnologias |
+|---|---|
+| Frontend | Next.js 14 (App Router), React 18, TypeScript strict, Tailwind CSS, shadcn/ui + Base UI, TanStack Query, Zustand, React Hook Form + Zod, Axios, Recharts, Motion |
+| Backend | Python 3.14, FastAPI (assíncrono), SQLAlchemy 2 async + asyncpg, Alembic, Pydantic v2, PyJWT, Argon2 |
+| Banco e infraestrutura | PostgreSQL 17, Redis 7 (limites de requisição e de conexões), Mailpit (e-mail de desenvolvimento) |
+| LLM | Ollama com `qwen2.5:3b` (local, sem chave de API) |
+| Qualidade | pytest (137 testes contra PostgreSQL real), ESLint, `tsc --noEmit`, GitHub Actions |
 
-- API em FastAPI com PostgreSQL, migrations Alembic e validação Pydantic, implementando os mesmos contratos da Parte 1.
-- Autenticação com JWT, refresh token rotacionado em cookie httpOnly, recuperação de senha por e-mail e atualização de perfil.
-- Chat com LLM local (Ollama) via REST e via WebSocket `/ws/chat` com streaming token a token; mensagens e consumo de tokens persistidos.
-- Métricas do dashboard, histórico de consumo e saldo mensal de tokens.
-- No frontend: renovação automática da sessão (`/auth/refresh`), logout que revoga a sessão no servidor e telas `/forgot-password` e `/reset-password`.
-- Detalhes em [`backend/README.md`](backend/README.md).
+## Arquitetura
 
-## O que será implementado
+```text
+Navegador ──HTTP /api/*──▶ Next.js (rewrite) ──▶ FastAPI ──▶ PostgreSQL
+    │                                              │  ├──▶ Redis (limites)
+    └──────────WebSocket ws://…/ws/chat───────────▶│  └──▶ Ollama (LLM, streaming)
+```
 
-- Edição e gerenciamento completo das entradas do devlog.
-- Upload e armazenamento de imagens de perfil.
-- Maior cobertura de testes end-to-end.
-- Configuração de ambiente de produção e publicação da aplicação.
+- O Next encaminha `/api/*` para o backend no mesmo origin, então o cookie do refresh token continua first-party e não é preciso CORS para o REST.
+- O rewrite do Next não encaminha WebSocket, por isso o navegador conecta direto em `ws://localhost:8000/ws/chat`. O token vai na primeira mensagem, nunca na URL.
+- Nenhuma conexão com o banco fica aberta enquanto o LLM gera: o pedido é gravado numa transação curta, o streaming acontece sem banco e a resposta é gravada em outra transação curta.
 
-## Tecnologias
+```text
+src/                         frontend
+├── app/                     rotas: (auth) login, cadastro, recuperação · (protected) dashboard, chat, devlog, tokens, perfil
+├── modules/<domínio>/       components, hooks (React Query), services (Axios/WebSocket), schemas (Zod), types
+├── components/              interface compartilhada (ui, efeitos, formulários)
+├── lib/                     cliente Axios com renovação de sessão, configuração, cabeçalhos de segurança
+├── store/                   Zustand (sessão e interface)
+└── middleware.ts            proteção de rotas e Content-Security-Policy com nonce
+backend/
+├── app/routers/             REST (/api/...) e WebSocket (/ws/chat)
+├── app/services/            regras de negócio: auth, chat, LLM, dashboard, cota e recarga de tokens, e-mail
+├── app/repositories/        acesso a dados
+├── app/models · schemas     tabelas SQLAlchemy e contratos Pydantic (JSON em camelCase)
+├── migrations/              Alembic
+└── tests/                   pytest
+docs/API_CONTRACTS.md        contrato de cada endpoint e do protocolo WebSocket
+```
 
-- [Next.js](https://nextjs.org/) 14, React 18 e TypeScript
-- Tailwind CSS, shadcn/ui e Base UI
-- TanStack React Query e Zustand
-- React Hook Form e Zod
-- Axios, Motion e MSW
-- Backend: Python, FastAPI, SQLAlchemy (async), PostgreSQL, Alembic, Pydantic e Ollama
+## Como rodar
 
-## Como executar
+### Opção 1: tudo com Docker (recomendado)
 
-### Pré-requisitos
-
-- Node.js e npm instalados.
-
-### Instalação e desenvolvimento
+Pré-requisitos: Docker com Docker Compose.
 
 ```bash
+cp .env.example .env
+# edite .env: troque JWT_SECRET e POSTGRES_PASSWORD
+docker compose up --build
+```
+
+| Serviço | Endereço |
+|---|---|
+| Aplicação | http://localhost:3000 |
+| Swagger | http://localhost:8000/docs |
+| E-mails de desenvolvimento (Mailpit) | http://localhost:8025 |
+
+Na primeira subida, o serviço `ollama-pull` baixa o modelo (cerca de 2 GB). O chat responde depois que o download termina (`docker compose logs -f ollama-pull`). Para usar GPU NVIDIA, descomente o bloco `deploy` do serviço `ollama` no `docker-compose.yml`.
+
+Para criar a conta de demonstração (`dev@patchnotes.dev` / `patchnotes123`, com algumas entradas de devlog):
+
+```bash
+docker compose exec backend python -m app.scripts.seed
+```
+
+### Opção 2: cada parte separada (desenvolvimento)
+
+Pré-requisitos: Node.js 20+, Python 3.12+ (testado com 3.14), Docker (para PostgreSQL, Redis e Mailpit) e [Ollama](https://ollama.com).
+
+**1. Banco e serviços de apoio**
+
+```bash
+cd backend
+cp .env.example .env
+# edite .env: defina POSTGRES_PASSWORD (a mesma em DATABASE_URL e TEST_DATABASE_URL) e gere JWT_SECRET:
+#   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+docker compose up -d --wait          # PostgreSQL, Redis e Mailpit em 127.0.0.1
+```
+
+**2. LLM**
+
+```bash
+ollama serve                         # se o serviço ainda não estiver rodando
+ollama pull qwen2.5:3b               # ~1,9 GB; cabe numa GPU de 4 GB
+```
+
+**3. Backend**
+
+```bash
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/alembic upgrade head
+.venv/bin/python -m app.scripts.seed   # opcional: conta de demonstração
+.venv/bin/python -m app                # API em http://127.0.0.1:8000 (Swagger em /docs)
+```
+
+**4. Frontend** (na raiz do projeto)
+
+```bash
+cp .env.example .env                 # API_URL e NEXT_PUBLIC_CHAT_WS_URL já apontam para localhost:8000
 npm install
-npm run dev
+npm run dev                          # http://localhost:3000
 ```
 
-Depois, acesse [http://localhost:3000](http://localhost:3000) e entre com `hayverson@patchnotes.dev` / `patchnotes123` ou crie uma conta.
+Detalhes do backend (segurança, limites, cálculo das métricas, desempenho do LLM) estão em [`backend/README.md`](backend/README.md).
 
-### API simulada (MSW)
+## Variáveis de ambiente
 
-Em desenvolvimento (`npm run dev`), o app só exibe as telas depois que o Mock Service Worker confirma que está interceptando as requisições. Se o worker não iniciar (por exemplo, sem `public/mockServiceWorker.js` ou com service workers bloqueados), aparece a tela "A API simulada não iniciou" com o motivo e o botão **Tentar novamente**; nenhuma chamada é feita sem mock. Para recriar o worker: `npx msw init public`.
+- [`.env.example`](.env.example) (raiz): frontend (`API_URL`, `NEXT_PUBLIC_CHAT_WS_URL`) e as variáveis do `docker compose`.
+- [`backend/.env.example`](backend/.env.example): todas as variáveis da API, comentadas (banco, JWT, Redis, SMTP, Ollama, cota de tokens, limites do WebSocket).
 
-Os dados simulados ficam na memória da aba e são reiniciados ao recarregar a página.
+## API
 
-Para usar o backend real em vez do MSW, suba a API (veja [`backend/README.md`](backend/README.md)) e rode:
+O Swagger em **http://localhost:8000/docs** lista todos os endpoints REST, com os esquemas de entrada e saída, e descreve o protocolo do WebSocket. O contrato completo, com exemplos e códigos de erro, está em [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md).
+
+| Grupo | Endpoints |
+|---|---|
+| Auth | `POST /api/auth/register` · `login` · `refresh` · `logout` · `forgot-password` · `reset-password` · `GET /api/auth/me` |
+| Chat | `GET /api/chat/history` · `POST /api/chat/send` · WebSocket `/ws/chat` |
+| Dashboard | `GET /api/dashboard/metrics` · `activity-heatmap` · `token-usage?period=7d\|30d` · `entries-by-tag` · `token-balance` |
+| Tokens | `GET /api/tokens/balance` · `GET /api/tokens/history` · `POST /api/tokens/recharge` |
+| Devlog e perfil | `GET/POST /api/devlog/entries` · `GET/PATCH /api/profile` |
+
+## Testes e verificações
 
 ```bash
-API_URL=http://127.0.0.1:8000 NEXT_PUBLIC_API_MOCKING=disabled NEXT_PUBLIC_CHAT_WS_URL=ws://127.0.0.1:8000/ws/chat npm run dev
+cd backend && .venv/bin/python -m pytest -q    # requer o docker compose do backend no ar
+npm run lint
+npm run typecheck
+npm run test:greeting
+npm run build
 ```
 
-Com `NEXT_PUBLIC_CHAT_WS_URL`, o assistente mostra a resposta token a token via WebSocket. Sem ela, ou com o MSW, o chat usa a rota REST.
+A CI (`.github/workflows/ci.yml`) roda tudo isso a cada pull request, além de conferir que as migrations estão em dia com os modelos.
 
-Para ver estados de erro e vazio, abra qualquer página com o parâmetro `mock`:
+## Segurança
 
-```text
-/dashboard?mock=empty                       # todas as telas sem dados
-/dashboard?mock=dashboard:server-error      # erro 500 só no dashboard
-/chat?mock=chat:server-error                # histórico com erro e envio falhando
-/profile?mock=profile:invalid-payload       # salvar perfil retorna 400
-/dashboard?mock=dashboard:unauthorized      # 401: sessão encerrada e volta ao login
-```
-
-Um aviso no topo indica o cenário ativo e permite limpá-lo. Detalhes em [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md#cenários-simulados-somente-msw-desenvolvimento).
-
-### Outros comandos
-
-```bash
-npm run build          # gera a build de produção
-npm start              # inicia a aplicação em produção
-npm run test:greeting  # executa os testes da saudação
-npm run test:mocks     # testa handlers e contratos do MSW (requer Bun)
-```
-
-## Estrutura principal
-
-```text
-backend/                 # API FastAPI + PostgreSQL + Ollama (ver backend/README.md)
-docs/
-└── API_CONTRACTS.md     # contratos HTTP (endpoints, payloads, erros)
-src/
-├── app/                 # rotas e layouts do Next.js
-├── components/          # componentes compartilhados da interface
-├── lib/                 # clientes, utilitários e configurações
-├── mocks/               # handlers, cenários simulados e inicialização do MSW
-├── modules/             # funcionalidades organizadas por domínio
-├── providers/           # providers globais
-└── store/               # estados globais com Zustand
-```
-
-## Status do projeto
-
-O frontend funciona tanto com a API simulada (MSW) quanto com o backend real, com persistência em PostgreSQL e assistente via Ollama local. O frontend renova a sessão automaticamente e oferece recuperação de senha.
+Resumo das decisões em [`docs/SEGURANCA.md`](docs/SEGURANCA.md): senhas com Argon2id, refresh token rotacionado com detecção de reuso, Content-Security-Policy com nonce, limites de requisição e de conexões WebSocket no Redis, IP do cliente lido só de proxies confiáveis, e nenhum segredo no repositório.
