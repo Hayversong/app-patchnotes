@@ -2,6 +2,14 @@
 
 Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit ou indica que a mudança foi feita no ambiente, fora do repositório.
 
+## 18/11/2026 — testes e melhorias (branch `develop`)
+
+- **Testes do frontend:** Vitest com 30 testes (conexão do chat com WebSocket falso, renovação de sessão no Axios, CSP, endereço do WebSocket).
+- **Ponta a ponta:** Playwright com 17 cenários em Chromium, Firefox e WebKit contra o app real; Ollama falso (`e2e/fake-ollama.mjs`) para rodar sem GPU; job `e2e` na CI.
+- **Docker:** nginx como entrada única (`/api`, `/ws`, `/docs` no mesmo endereço), `X-Forwarded-For` sobrescrito e `TRUSTED_PROXIES` só com o IP fixo do proxy; `docker-compose.gpu.yml`.
+- **Correções encontradas pelos testes:** 500 na renderização do `/chat` no servidor; CSP com `upgrade-insecure-requests` em HTTP quebrava o Safari; formulários sem `method="post"` punham a senha na URL sem JavaScript.
+- **Backend:** TestClient com `httpx2` (sem aviso de depreciação).
+
 ## 18/11/2026 — integração final (branch `develop`)
 
 - **Tokens:** saldo, extrato e recarga simulada (`/api/tokens/*`, migration 0004) e a tela `/tokens`. O bloqueio do chat por cota considera as recargas.

@@ -31,13 +31,15 @@ Montada em `src/lib/security-headers.ts` e aplicada por `src/middleware.ts` a to
 | `connect-src` | `'self'` + origem de `NEXT_PUBLIC_CHAT_WS_URL` | API pelo próprio origin; WebSocket do chat |
 | `worker-src` | `'self'` | service worker do MSW (desenvolvimento) |
 | `object-src`, `base-uri`, `form-action`, `frame-ancestors` | `'none'`, `'self'`, `'self'`, `'none'` | |
-| `upgrade-insecure-requests` | só em produção | |
+| `upgrade-insecure-requests` | só em produção **e** com a página servida por HTTPS (direto ou `X-Forwarded-Proto: https`) | Em HTTP o Safari/WebKit trocava `http://localhost` por `https://` e nenhum script carregava (corrigido em 18/11/2026) |
 
 Só em desenvolvimento: `'unsafe-eval'` (React Refresh), `ws:` (HMR) e `http:` em imagens.
 
 O Zod 4 testaria `new Function("")` ao criar cada schema e geraria um relatório de violação por página. Os schemas importam `z` de `src/lib/zod.ts`, que liga `jitless`.
 
 Outros cabeçalhos (`next.config.mjs`): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin`, HSTS em produção, sem `X-Powered-By`.
+
+**Verificação (18/11/2026):** suíte Playwright em Chromium, Firefox e WebKit confere que nenhuma tela gera erro de console ou violação de CSP; formulários usam `method="post"`, então mesmo sem JavaScript as credenciais não vão para a URL.
 
 **Verificação (12/11/2026):** Chrome headless via DevTools Protocol, em tempo real. Foram testadas 7 páginas, em dev com MSW e em produção com backend real. Nenhuma violação de CSP. O WebSocket do chat abre, e a conexão a outro destino é bloqueada. Um controle negativo (script inline sem nonce) foi bloqueado, o que confirma que o detector funciona.
 
