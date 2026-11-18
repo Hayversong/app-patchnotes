@@ -78,7 +78,7 @@ jobs:
         run: npm run build
 
   e2e:
-    name: Ponta a ponta (Playwright, Chromium + Firefox)
+    name: Ponta a ponta (Playwright, Chromium + Firefox + WebKit)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -111,6 +111,7 @@ jobs:
       RATE_LIMIT_ENABLED: "false"
       API_URL: http://127.0.0.1:8000
       NEXT_PUBLIC_CHAT_WS_URL: ws://localhost:8000/ws/chat
+      E2E_BROWSERS: chromium,firefox,webkit
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -124,7 +125,7 @@ jobs:
           cache: npm
       - run: pip install -r backend/requirements.txt
       - run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium firefox
+      - run: npx playwright install --with-deps chromium firefox webkit
       - name: Ollama falso
         run: node e2e/fake-ollama.mjs &
       - name: API

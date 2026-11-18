@@ -7,8 +7,14 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@patchnotes.dev`;
 }
 
+/** Abre a página e espera o React hidratar (antes disso, o que for digitado se perde). */
+export async function visit(page: Page, path: string) {
+  await page.goto(path);
+  await page.locator("html[data-hydrated]").waitFor({ state: "attached" });
+}
+
 export async function register(page: Page, name: string, email: string) {
-  await page.goto("/register");
+  await visit(page, "/register");
   await page.fill("#name", name);
   await page.fill("#email", email);
   await page.fill("#password", PASSWORD);
@@ -18,7 +24,7 @@ export async function register(page: Page, name: string, email: string) {
 }
 
 export async function login(page: Page, email: string, password = PASSWORD) {
-  await page.goto("/login");
+  await visit(page, "/login");
   await page.fill("#email", email);
   await page.fill("#password", password);
   await page.getByRole("button", { name: "Entrar" }).click();
@@ -26,7 +32,7 @@ export async function login(page: Page, email: string, password = PASSWORD) {
 
 /** Abre o chat e espera o WebSocket autenticar (botão habilitado). */
 export async function openChat(page: Page) {
-  await page.goto("/chat");
+  await visit(page, "/chat");
   await expect(page.getByRole("button", { name: "Enviar mensagem" })).toBeEnabled({ timeout: 30_000 });
 }
 

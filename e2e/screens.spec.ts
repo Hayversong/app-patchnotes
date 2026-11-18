@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { visit } from "./helpers";
+
 const screens = [
   { path: "/dashboard", ready: "Mensagens trocadas" },
   { path: "/chat", ready: "Sua mensagem" },
@@ -36,7 +38,7 @@ test("erro 500 mostra mensagem e o botão de tentar de novo recupera a tela", as
 
 test("devlog salva na API e aparece na lista e no dashboard", async ({ page }) => {
   const title = `Entrada E2E ${Date.now()}`;
-  await page.goto("/devlog");
+  await visit(page, "/devlog");
   await page.fill("#title", title);
   await page.fill("#content", "Ajustei o tempo de coyote no pulo.");
   await page.fill("#tags", "e2e, gameplay");
@@ -48,7 +50,7 @@ test("devlog salva na API e aparece na lista e no dashboard", async ({ page }) =
 
 test("perfil salva na API e continua depois de recarregar", async ({ page }) => {
   const bio = `Bio E2E ${Date.now()}`;
-  await page.goto("/profile");
+  await visit(page, "/profile");
   await page.fill("#bio", bio);
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("status").filter({ hasText: /salv|atualiz/i })).toBeVisible();

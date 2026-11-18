@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { openChat } from "./helpers";
+import { openChat, visit } from "./helpers";
 
 type Metrics = { messagesExchanged: number; tokensUsed: number; activeTime: string };
 
@@ -53,7 +53,7 @@ test("dashboard, saldo e extrato refletem o consumo real de uma conversa", async
 });
 
 test("recarga simulada soma ao saldo e entra no extrato", async ({ page }) => {
-  await page.goto("/tokens");
+  await visit(page, "/tokens");
   await expect(page.getByText("Saldo atual")).toBeVisible();
   const before = await balance(page);
 

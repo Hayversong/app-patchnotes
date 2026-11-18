@@ -1,5 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
+/** Navegadores testados. Padrão: Chromium e Firefox. E2E_BROWSERS=chromium,firefox,webkit inclui o WebKit (Safari). */
+export const browsers = (process.env.E2E_BROWSERS ?? "chromium,firefox").split(",").map((name) => name.trim()).filter(Boolean);
+const devicesByBrowser: Record<string, (typeof devices)[string]> = {
+  chromium: devices["Desktop Chrome"],
+  firefox: devices["Desktop Firefox"],
+  webkit: devices["Desktop Safari"],
+};
+
 /**
  * Testes ponta a ponta contra o app real (frontend + API + banco + LLM).
  * Suba o ambiente antes (docker compose up, ou backend + `npm run build && npm start`) e rode `npm run test:e2e`.
@@ -23,7 +31,10 @@ export default defineConfig({
   },
   projects: [
     { name: "setup", testMatch: /global\.setup\.ts/ },
-    { name: "chromium", use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/chromium.json" }, dependencies: ["setup"] },
-    { name: "firefox", use: { ...devices["Desktop Firefox"], storageState: "e2e/.auth/firefox.json" }, dependencies: ["setup"] },
+    ...browsers.map((name) => ({
+      name,
+      use: { ...devicesByBrowser[name], storageState: `e2e/.auth/${name}.json` },
+      dependencies: ["setup"],
+    })),
   ],
 });

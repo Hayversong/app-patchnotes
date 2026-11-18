@@ -54,3 +54,17 @@ test("sem refresh token válido, o 401 encerra a sessão com aviso", async ({ pa
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByText("Sua sessão expirou")).toBeVisible();
 });
+
+test.describe("sem JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("enviar o login não coloca e-mail nem senha na URL", async ({ page }) => {
+    await page.goto("/login");
+    await page.fill("#email", "alguem@patchnotes.dev");
+    await page.fill("#password", "senha-que-nao-pode-vazar");
+    await page.locator("form button[type=submit]").click();
+    await page.waitForLoadState();
+    expect(page.url()).not.toContain("senha-que-nao-pode-vazar");
+    expect(page.url()).not.toContain("password=");
+  });
+});
