@@ -6,8 +6,8 @@
  * Exceções documentadas (docs/SEGURANCA.md):
  * - style-src 'unsafe-inline': atributos `style` gerados pelo React no SSR (gráficos, heatmap, animações do
  *   motion) não aceitam nonce. Estilos não executam código; o risco residual é CSS injetado.
- * - img-src https: — avatarUrl é uma URL livre informada pela pessoa no perfil.
- * - Só em desenvolvimento: 'unsafe-eval' (React Refresh/webpack), ws: (HMR) e http: em imagens.
+ * - img-src só do próprio endereço: a foto de perfil é enviada como arquivo e servida pela API (/api/profile/avatar).
+ * - Só em desenvolvimento: 'unsafe-eval' (React Refresh/webpack) e ws: (HMR).
  */
 
 import { chatSocketSetting } from "@/lib/config";
@@ -36,7 +36,7 @@ export function buildContentSecurityPolicy(nonce: string, isDev: boolean, https 
     // 'strict-dynamic': scripts carregados por um script com nonce (chunks do Next) também são aceitos.
     "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...(isDev ? ["'unsafe-eval'"] : [])],
     "style-src": ["'self'", "'unsafe-inline'"],
-    "img-src": ["'self'", "data:", "blob:", "https:", ...(isDev ? ["http:"] : [])],
+    "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'", "data:"],
     "connect-src": ["'self'", ...(chatSocket ? [chatSocket] : []), ...(isDev ? ["ws:"] : [])],
     "worker-src": ["'self'"],

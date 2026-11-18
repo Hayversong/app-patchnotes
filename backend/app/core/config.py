@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # Estado compartilhado entre réplicas (limites de requisição e de conexões WebSocket). Obrigatório em production.
     redis_url: str | None = None
     max_request_body_bytes: int = Field(default=64 * 1024, ge=1024)
+    # Foto de perfil (PNG, JPEG ou WebP). Só a rota do upload aceita corpo maior que max_request_body_bytes.
+    avatar_max_bytes: int = Field(default=256 * 1024, ge=1024, le=5 * 1024 * 1024)
 
     password_reset_ttl_minutes: int = Field(default=30, ge=5, le=24 * 60)
     # Validade do link de confirmação de cadastro.

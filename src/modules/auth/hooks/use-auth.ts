@@ -46,12 +46,17 @@ export function useCurrentUserQuery() {
   });
 }
 
-/** Sai na hora e revoga a sessão no servidor em segundo plano (falha de rede não impede sair). */
+/**
+ * Encerra a sessão: a API revoga o refresh token e apaga os cookies HttpOnly (o JavaScript não consegue), e só
+ * então a página é recarregada no /login. O recarregamento descarta da memória todos os dados da conta.
+ * Se a rede falhar, sai do mesmo jeito: sem o indicador de sessão, o app não usa mais os cookies que sobraram.
+ */
 export function useLogout() {
   const clearSession = useAuthStore((state) => state.clearSession);
-  return useCallback(() => {
-    void logout().catch(() => undefined);
+  return useCallback(async () => {
     clearSession();
+    await logout().catch(() => undefined);
+    window.location.replace("/login");
   }, [clearSession]);
 }
 

@@ -3,7 +3,7 @@
 import { BookOpenText, ChevronLeft, ChevronRight, Coins, Cpu, LayoutDashboard, LogOut, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { SidebarLabel } from "@/components/motion-primitives/sidebar-label";
 import { TransitionPanel } from "@/components/motion-primitives/transition-panel";
@@ -33,6 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const storedUser = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const endSession = useLogout();
+  const [leaving, setLeaving] = useState(false);
   const currentUser = useCurrentUserQuery();
   const user = storedUser ?? currentUser.data;
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
@@ -45,12 +46,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [currentUser.data, setUser]);
 
   useEffect(() => {
-    if (!authenticated) router.replace("/login");
-  }, [router, authenticated]);
+    // Sessão encerrada pela API (401). No logout, quem navega é o próprio useLogout.
+    if (!authenticated && !leaving) router.replace("/login");
+  }, [router, authenticated, leaving]);
 
   function logout() {
-    endSession();
-    router.replace("/login");
+    setLeaving(true);
+    void endSession();
   }
 
   return (

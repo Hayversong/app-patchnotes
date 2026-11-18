@@ -67,3 +67,22 @@ test("layout em tela de celular sem rolagem horizontal", async ({ page }) => {
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
 });
+
+test("foto de perfil enviada como arquivo e servida pela própria API", async ({ page }) => {
+  // PNG 1x1 válido.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64");
+  await visit(page, "/profile");
+
+  await page.locator("#avatar").setInputFiles({ name: "falso.png", mimeType: "image/png", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>') });
+  await expect(page.getByText("Envie uma imagem PNG, JPEG ou WebP.")).toBeVisible(); // a API olha os bytes, não o nome
+
+  await page.locator("#avatar").setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByText("Foto atualizada.")).toBeVisible();
+  const image = page.locator('main img[src*="/api/profile/avatar"]');
+  await expect(image).toBeVisible();
+  expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1); // carregou de verdade (CSP aceitou)
+
+  await page.getByRole("button", { name: "Remover" }).click();
+  await expect(page.getByText("Foto removida.")).toBeVisible();
+  await expect(image).toHaveCount(0);
+});

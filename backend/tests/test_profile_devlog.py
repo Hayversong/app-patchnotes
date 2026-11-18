@@ -33,16 +33,16 @@ def test_profile_get_and_partial_update(harness: Harness, user: dict) -> None:
     assert profile["name"] == "Pessoa Teste" and profile["bio"] == "Faço jogos de plataforma."
     assert profile["githubUrl"] == "https://github.com/exemplo" and profile["email"] == "pessoa@patchnotes.dev"
 
+    # avatarUrl é só de leitura: uma URL externa enviada no PATCH é ignorada (a foto vai por PUT /profile/avatar).
     renamed = harness.client.patch("/api/profile", headers=headers, json={"name": "Novo Nome", "avatarUrl": "https://cdn.exemplo.dev/a.png", "githubUrl": ""})
     assert renamed.json()["user"]["githubUrl"] == ""
     me = harness.client.get("/api/auth/me", headers=headers).json()["user"]
-    assert me["name"] == "Novo Nome" and me["avatarUrl"] == "https://cdn.exemplo.dev/a.png"
+    assert me["name"] == "Novo Nome" and "avatarUrl" not in me
 
 
 @pytest.mark.parametrize("payload, field", [
     ({"name": "A"}, "name"),
     ({"bio": "x" * 241}, "bio"),
-    ({"avatarUrl": "não-é-url"}, "avatarUrl"),
     ({"githubUrl": "javascript:alert(1)"}, "githubUrl"),
 ])
 def test_profile_validation(harness: Harness, user: dict, payload: dict, field: str) -> None:

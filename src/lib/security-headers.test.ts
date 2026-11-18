@@ -13,6 +13,7 @@ describe("Content-Security-Policy", () => {
     expect(csp["connect-src"]).toContain("ws://localhost:8000");
     expect(csp["frame-ancestors"]).toEqual(["'none'"]);
     expect(csp["object-src"]).toEqual(["'none'"]);
+    expect(csp["img-src"]).toEqual(["'self'", "data:", "blob:"]); // nenhuma imagem de outros sites
   });
 
   it("upgrade-insecure-requests só sob HTTPS (em HTTP o Safari quebraria todos os scripts)", () => {

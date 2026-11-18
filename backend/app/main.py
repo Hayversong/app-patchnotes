@@ -80,12 +80,13 @@ def create_app(
     )
     app.state.settings = settings
 
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes,
+                       overrides={"/api/profile/avatar": settings.avatar_max_bytes})
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
     # Por último = camada mais externa: os cabeçalhos valem também para 413, preflight de CORS e erros.
