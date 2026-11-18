@@ -1,6 +1,6 @@
 # Contratos da API — Patchnotes
 
-Este documento é a **fonte única** dos contratos HTTP entre o frontend e a API. Na Parte 1, a API é simulada pelo MSW; o backend da Parte 2 deve implementar exatamente estes contratos para que as telas funcionem sem reescrita.
+Este documento é a **fonte única** dos contratos HTTP entre o frontend e a API. Os contratos nasceram na Parte 1 (com a API simulada pelo MSW, já removido) e o backend FastAPI da Parte 2 os implementa sem mudanças de formato.
 
 Referências de implementação (devem permanecer alinhadas a este documento):
 
@@ -8,10 +8,11 @@ Referências de implementação (devem permanecer alinhadas a este documento):
 |---|---|
 | Tipos | `src/modules/*/types/*.types.ts`, `src/shared/types/api.types.ts` |
 | Serviços (Axios) | `src/modules/*/services/*.service.ts`, cliente em `src/lib/axios.ts` |
-| Handlers MSW | `src/mocks/handlers.ts` |
-| Testes de contrato | `src/mocks/__tests__/handlers.test.ts` (`npm run test:mocks`) |
+| Implementação | `backend/app/routers/*.py`, `backend/app/schemas/*.py` |
+| Testes de contrato | `backend/tests/*.py` (`python -m pytest`) |
+| Documentação interativa | Swagger em `http://localhost:8000/docs` |
 
-> Mudanças de contrato devem ser feitas **primeiro aqui**, depois nos tipos, handlers e testes. Não altere um contrato para acomodar uma tela sem registrar a mudança neste arquivo.
+> Mudanças de contrato devem ser feitas **primeiro aqui**, depois nos tipos, no backend e nos testes. Não altere um contrato para acomodar uma tela sem registrar a mudança neste arquivo.
 
 ## Convenções gerais
 
@@ -19,8 +20,8 @@ Referências de implementação (devem permanecer alinhadas a este documento):
 - **Formato:** JSON (`Content-Type: application/json`) em requisições e respostas. Datas em ISO 8601 (`2026-09-17T18:30:00.000Z`); datas sem hora em `YYYY-MM-DD`.
 - **Campos opcionais** podem ser omitidos da resposta (não são enviados como `null`).
 - **Autenticação:** endpoints marcados com 🔒 exigem `Authorization: Bearer <token>`. O token é devolvido por `POST /auth/login` e `POST /auth/register`. O frontend o guarda num cookie `patchnotes_token` (lido pelo middleware do Next para proteger rotas) e o injeta via interceptor do Axios.
-  - No mock, o token tem o formato `mock-token-<userId>`. O frontend trata o token como **opaco**; o backend real pode usar JWT ou outro formato.
-- **401 em endpoint protegido:** o interceptor do Axios encerra a sessão (remove o cookie) e o app redireciona para `/login`, que avisa "Sua sessão expirou".
+  - O token é um JWT, mas o frontend o trata como **opaco**.
+- **401 em endpoint protegido:** o interceptor do Axios tenta renovar a sessão com `POST /auth/refresh`; se não conseguir, encerra a sessão (remove o cookie) e o app redireciona para `/login`, que avisa "Sua sessão expirou".
 
 ### Corpo de erro
 
@@ -78,7 +79,7 @@ Autentica e devolve a sessão.
 // Requisição
 { "email": "hayverson@patchnotes.dev", "password": "patchnotes123" }
 // 200
-{ "user": { "id": "user-1", "name": "Hayverson", "email": "hayverson@patchnotes.dev" }, "token": "mock-token-user-1" }
+{ "user": { "id": "user-1", "name": "Hayverson", "email": "hayverson@patchnotes.dev" }, "token": "eyJhbGciOiJIUzI1NiIs…" }
 ```
 
 Erros: `400` payload inválido · `401` `{ "message": "E-mail ou senha inválidos" }` · `500`.
@@ -97,7 +98,7 @@ Cria a conta e já devolve a sessão (o usuário entra direto no dashboard). A c
 // Requisição
 { "name": "Ada", "email": "ada@patchnotes.dev", "password": "senha-segura" }
 // 201
-{ "user": { "id": "3f2c…", "name": "Ada", "email": "ada@patchnotes.dev" }, "token": "mock-token-3f2c…" }
+{ "user": { "id": "3f2c…", "name": "Ada", "email": "ada@patchnotes.dev" }, "token": "eyJhbGciOiJIUzI1NiIs…" }
 ```
 
 Erros: `400` · `409` `{ "message": "Este e-mail já está cadastrado" }` · `500`.
@@ -286,44 +287,17 @@ Efeito colateral: `name` e `avatarUrl` refletem em `GET /auth/me`. Erros: `400` 
 
 ---
 
-## Cenários simulados (somente MSW, desenvolvimento)
+## Dados de teste
 
-Para exercitar estados de erro e vazio sem editar código, o frontend envia o cabeçalho `X-Mock-Scenario` quando um cenário está ativo. **Ele não faz parte do contrato**: o backend real deve ignorá-lo.
-
-Ative pela URL, abrindo qualquer página com o parâmetro `mock`:
-
-| Exemplo | Efeito |
-|---|---|
-| `/dashboard?mock=server-error` | todos os domínios respondem 500 |
-| `/dashboard?mock=dashboard:empty` | só o domínio dashboard responde vazio |
-| `/chat?mock=chat:server-error,devlog:empty` | vários domínios ao mesmo tempo |
-| `/profile?mock=profile:invalid-payload` | `PATCH /profile` responde 400 |
-| `/dashboard?mock=dashboard:unauthorized` | 401 → sessão encerrada → `/login` |
-
-Domínios: `auth`, `dashboard`, `devlog`, `chat`, `profile` (ou sem prefixo = todos). O cenário do domínio prevalece sobre o global.
-
-| Cenário | Consultas (GET) | Mutações (POST/PATCH) |
-|---|---|---|
-| `success` (padrão) | dados normais | comportamento normal |
-| `empty` | listas vazias, métricas zeradas, perfil só com campos obrigatórios | comportamento normal |
-| `invalid-payload` | comportamento normal | 400 com `details` |
-| `unauthorized` | 401 | 401 |
-| `server-error` | 500 | 500 |
-
-Enquanto um cenário está ativo, um aviso "MSW: …" aparece no topo da tela com o botão **Limpar**. O cenário vale para a navegação dentro do app e é descartado ao recarregar a página sem o parâmetro.
-
-### Dados de teste
-
-- Usuário pré-cadastrado: `hayverson@patchnotes.dev` / `patchnotes123`.
-- O estado do mock (usuários cadastrados, entradas, mensagens, perfil) vive **na memória da aba** e é reiniciado a cada recarregamento completo. Um usuário criado no cadastro deixa de existir após recarregar a página; o cookie restante gera 401 e o app volta ao login.
+- `python -m app.scripts.seed` (no `backend/`) cria a conta `dev@patchnotes.dev` / `patchnotes123` com algumas entradas de devlog. Recusa rodar com `ENVIRONMENT=production`.
 
 ---
 
 ## Parte 2 — backend real (adições aprovadas)
 
-O backend FastAPI (`backend/`) implementa **todos os endpoints acima com os mesmos formatos**. As adições abaixo foram aprovadas e **não alteram** nenhum contrato existente; o frontend da Parte 1 funciona sem usá-las. Instruções de execução em `backend/README.md`.
+O backend FastAPI (`backend/`) implementa **todos os endpoints acima com os mesmos formatos**. As adições abaixo foram aprovadas e **não alteram** nenhum contrato existente. Instruções de execução em `backend/README.md`.
 
-### Diferenças de comportamento em relação ao MSW
+### Diferenças de comportamento em relação à Parte 1
 
 - `token` passa a ser um JWT (o frontend continua tratando-o como opaco). Validade curta (15 min, `ACCESS_TOKEN_TTL_MINUTES`); o frontend renova a sessão sozinho via `POST /auth/refresh` (ver “Uso pelo frontend” abaixo).
 - Login e cadastro também definem o cookie `patchnotes_refresh` (httpOnly, SameSite=Strict, path `/api/auth`). O corpo da resposta não muda.
@@ -366,21 +340,54 @@ Responde `204` e encerra todas as sessões existentes (refresh tokens revogados 
 ### Uso pelo frontend (sessão e recuperação de senha)
 
 - **Renovação:** em um `401` de rota protegida, o interceptor do Axios (`src/lib/axios.ts`) chama `POST /auth/refresh` uma única vez (chamadas simultâneas compartilham a mesma renovação), grava o novo `token` e refaz a requisição. Se o refresh falhar, encerra a sessão como antes (→ `/login`, "Sua sessão expirou"). Rotas de autenticação (`login`, `register`, `refresh`, `logout`, `forgot-password`, `reset-password`) não disparam renovação.
-- **WebSocket:** se a conexão for recusada com `4401`, o chat renova o token e reenvia a mensagem uma vez (o servidor recusa antes de processar, então não há duplicação).
+- **WebSocket:** se a conexão for recusada com `4401`, o chat renova o token, reconecta e reenvia a mensagem uma vez (o servidor recusa antes de processar, então não há duplicação).
 - **Sair:** chama `POST /auth/logout` em segundo plano e apaga a sessão local na hora.
 - **Telas:** `/forgot-password` (link "Esqueci minha senha" no login) e `/reset-password`, que lê o token do fragmento `#token=…`.
 - O cookie `patchnotes_token` dura 7 dias (validade do refresh token), para o middleware do Next não mandar ao login enquanto a sessão ainda pode ser renovada.
-- **No MSW:** `/auth/refresh` sempre responde `401` (o mock não mantém refresh tokens), `/auth/logout` responde `204`, `/auth/forgot-password` responde `202` e `/auth/reset-password` aceita apenas o token `token-de-redefinicao-do-mock-0001` (abra `/reset-password#token=token-de-redefinicao-do-mock-0001`).
 
 ### `GET /dashboard/token-balance` 🔒
 
 Saldo da cota mensal de tokens (UTC; limite configurável, padrão 100.000).
 
 ```json
-{ "balance": 99984, "limit": 100000, "used": 16, "periodStart": "2026-11-01T00:00:00.000Z", "periodEnd": "2026-12-01T00:00:00.000Z" }
+{ "balance": 99984, "limit": 100000, "used": 16, "credits": 0, "periodStart": "2026-11-01T00:00:00.000Z", "periodEnd": "2026-12-01T00:00:00.000Z" }
 ```
 
-Com `balance` 0, `POST /chat/send` responde `429` e o WebSocket envia `error` com `code: "quota_exceeded"`. Erros: `401`.
+`limit` = cota mensal + `credits` (recargas do mês). Com `balance` 0, `POST /chat/send` responde `429` e o WebSocket envia `error` com `code: "quota_exceeded"`. Erros: `401`.
+
+### `GET /tokens/balance` 🔒
+
+Mesmo corpo de `GET /dashboard/token-balance`. Usado pela tela `/tokens`.
+
+### `GET /tokens/history?limit=20` 🔒
+
+Extrato do mais recente para o mais antigo, misturando consumo (uma linha por resposta do modelo) e recargas. `limit` de 1 a 50 (padrão 20). `packages` lista os valores aceitos em `POST /tokens/recharge`.
+
+```json
+{
+  "items": [
+    { "id": "…", "kind": "recharge", "amount": 50000, "createdAt": "2026-11-18T14:02:00.000Z", "estimated": false },
+    { "id": "…", "kind": "usage", "amount": 16, "createdAt": "2026-11-18T14:00:00.000Z", "model": "qwen2.5:3b", "promptTokens": 12, "completionTokens": 4, "estimated": false }
+  ],
+  "packages": [10000, 50000, 100000]
+}
+```
+
+Erros: `400` (`limit` fora do intervalo) · `401`.
+
+### `POST /tokens/recharge` 🔒
+
+Recarga **simulada** (não há cobrança). Soma um pacote ao saldo do mês corrente.
+
+Requisição: `{ "amount": 50000 }` — `amount` precisa ser um dos `packages`.
+
+Resposta `200`: o corpo de `GET /tokens/balance` com `"recharged": 50000`.
+
+Erros: `400` (pacote inválido, `details.amount`) · `401` · `429` (teto mensal de recargas, `MONTHLY_TOKEN_CREDIT_CAP`, ou mais de 10 recargas por minuto).
+
+### `GET /health`
+
+Público. `{ "status": "ok" }`. Usado pelo healthcheck do Docker.
 
 ### WebSocket `/ws/chat`
 
@@ -398,8 +405,8 @@ Fica fora do prefixo `/api`; em desenvolvimento, `ws://127.0.0.1:8000/ws/chat`. 
 
 Códigos de `error`: `invalid_message`, `rate_limited`, `quota_exceeded`, `llm_unavailable`, `llm_timeout`, `llm_error`, `unavailable` (armazenamento dos limites fora do ar), `unauthorized` e `too_many_connections` (ambos seguidos de fechamento).
 
-Códigos de fechamento: `4401` (sem autenticação, prazo esgotado, token inválido, revogado ou **expirado durante a conexão**), `4408` (inatividade: 10 min sem mensagens), `4429` (mais de 3 conexões simultâneas da mesma conta), `1008` (frame binário), `1009` (frame acima de 16 KB), `1011` (erro interno), `1013` (serviço indisponível). Handshake recusado (HTTP 403): `Origin` não autorizado ou mais de 20 conexões simultâneas do mesmo IP. O frontend reconecta sozinho no próximo envio depois de qualquer fechamento.
+Códigos de fechamento: `4401` (sem autenticação, prazo esgotado, token inválido, revogado ou **expirado durante a conexão**), `4408` (inatividade: 10 min sem mensagens), `4429` (mais de 3 conexões simultâneas da mesma conta), `1008` (frame binário), `1009` (frame acima de 16 KB), `1011` (erro interno), `1013` (serviço indisponível). Handshake recusado (HTTP 403): `Origin` não autorizado ou mais de 20 conexões simultâneas do mesmo IP. Depois de um `4408`, o frontend reabre a conexão no próximo envio; nos demais fechamentos, mostra um aviso e reconecta sozinho.
 
-**Uso pelo frontend:** com `NEXT_PUBLIC_CHAT_WS_URL` definido e o MSW desligado, a tela do chat usa este WebSocket (`src/modules/chat/services/chat-socket.ts`). Ela abre a conexão no primeiro envio e a reaproveita, e fecha quando a pessoa sai da tela. Sem a variável, ou com o MSW, continua usando `POST /chat/send`.
+**Uso pelo frontend:** o chat envia mensagens **somente** por este WebSocket (`src/modules/chat/services/chat-socket.ts`, endereço em `NEXT_PUBLIC_CHAT_WS_URL`, padrão `ws://localhost:8000/ws/chat`). A conexão abre quando a tela monta e fecha quando a pessoa sai dela. Se cair, a tela mostra um aviso e tenta reconectar com espera crescente (1 s, 2 s, 4 s… até 15 s), com um botão para reconectar na hora; o formulário fica bloqueado sem conexão e enquanto o modelo responde. `POST /chat/send` continua disponível no backend para clientes sem WebSocket, mas o frontend não o usa.
 
 Uma resposta por vez em cada conexão. Se o cliente desconectar no meio, a geração é interrompida e o pedido não entra no histórico. Mensagens concluídas aparecem também em `GET /chat/history`.

@@ -1,6 +1,14 @@
 # Registro de mudanças — Patchnotes
 
-Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit (branch `implementando-backend`) ou indica que a mudança foi feita no ambiente, fora do repositório.
+Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit ou indica que a mudança foi feita no ambiente, fora do repositório.
+
+## 18/11/2026 — integração final (branch `develop`)
+
+- **Tokens:** saldo, extrato e recarga simulada (`/api/tokens/*`, migration 0004) e a tela `/tokens`. O bloqueio do chat por cota considera as recargas.
+- **Chat:** WebSocket como único canal de envio, com aviso de queda, reconexão automática e tokens por mensagem.
+- **MSW removido:** todas as telas consomem a API real; o rewrite `/api/*` aponta para `API_URL` (padrão `http://localhost:8000`).
+- **Ambiente:** `docker-compose.yml` na raiz sobe frontend, API, PostgreSQL, Redis, Ollama e Mailpit; Dockerfiles do frontend e do backend; `.env.example` na raiz.
+- **Swagger** em `/docs` com o protocolo do WebSocket descrito; `GET /api/health`.
 
 ## 12/11/2026
 

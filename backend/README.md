@@ -1,6 +1,6 @@
 # Patchnotes — Backend (Parte 2)
 
-API em **FastAPI** (assíncrona) com **PostgreSQL**, **Alembic**, **Pydantic** e LLM local via **Ollama**. Implementa os mesmos endpoints e formatos da Parte 1 (`docs/API_CONTRACTS.md`), de modo que o frontend troca o MSW pela API real sem alterar telas ou componentes.
+API em **FastAPI** (assíncrona) com **PostgreSQL**, **Alembic**, **Pydantic** e LLM local via **Ollama**. Implementa os mesmos endpoints e formatos da Parte 1 (`docs/API_CONTRACTS.md`); o frontend consome esta API diretamente.
 
 ## Arquitetura
 
@@ -13,12 +13,13 @@ backend/
 │   ├── models/              # tabelas SQLAlchemy
 │   ├── schemas/             # entrada/saída Pydantic (JSON em camelCase, como o contrato)
 │   ├── repositories/        # acesso a dados (ORM / SQL parametrizado)
-│   ├── services/            # regras de negócio: auth, chat, LLM, dashboard, cota, e-mail
+│   ├── services/            # regras de negócio: auth, chat, LLM, dashboard, cota/recarga de tokens, e-mail
 │   ├── routers/             # rotas REST (/api/...) e WebSocket (/ws/chat)
 │   └── scripts/seed.py      # dados fictícios de desenvolvimento
 ├── migrations/              # Alembic (versionadas)
 ├── tests/                   # pytest contra PostgreSQL real, LLM e e-mail simulados
-├── docker-compose.yml       # PostgreSQL + Mailpit (somente 127.0.0.1)
+├── Dockerfile               # imagem da API (usada pelo docker-compose.yml da raiz)
+├── docker-compose.yml       # só a infraestrutura de desenvolvimento: PostgreSQL, Redis e Mailpit (127.0.0.1)
 └── .env.example             # todas as variáveis, sem segredos
 ```
 
@@ -99,19 +100,15 @@ Não exponha a porta 11434 publicamente (não defina `OLLAMA_HOST=0.0.0.0` sem f
 
 ### Frontend usando o backend real
 
-Na raiz do projeto:
+Na raiz do projeto (`cp .env.example .env` já traz estes valores):
 
 ```bash
-API_URL=http://127.0.0.1:8000 \
-NEXT_PUBLIC_API_MOCKING=disabled \
-NEXT_PUBLIC_CHAT_WS_URL=ws://127.0.0.1:8000/ws/chat \
-npm run dev
+API_URL=http://localhost:8000 NEXT_PUBLIC_CHAT_WS_URL=ws://localhost:8000/ws/chat npm run dev
 ```
 
-- `API_URL` liga um *rewrite* do Next: `/api/*` → FastAPI no **mesmo origin** (o cookie de refresh continua first-party e não precisa de CORS).
-- `NEXT_PUBLIC_API_MOCKING=disabled` desliga o MSW. Sem essas variáveis, o frontend segue exatamente como na Parte 1 (MSW).
-- `NEXT_PUBLIC_CHAT_WS_URL` faz a tela do chat usar o WebSocket, com a resposta aparecendo token a token. O WebSocket não passa pelo rewrite, então conecta direto no backend, e a origem do frontend precisa estar em `CORS_ORIGINS`. Sem essa variável, ou com o MSW ligado, o chat usa `POST /api/chat/send`.
-- Variáveis `NEXT_PUBLIC_*` são lidas quando o `next dev` inicia: reinicie-o depois de mudá-las.
+- `API_URL` alimenta o *rewrite* do Next: `/api/*` → FastAPI no **mesmo origin** (o cookie de refresh continua first-party e não precisa de CORS). Padrão: `http://localhost:8000`.
+- `NEXT_PUBLIC_CHAT_WS_URL` é o WebSocket do chat. O rewrite não encaminha WebSocket, então o navegador conecta direto no backend, e a origem do frontend precisa estar em `CORS_ORIGINS`. Padrão: `ws://localhost:8000/ws/chat`.
+- Variáveis `NEXT_PUBLIC_*` são lidas quando o `next dev` inicia (e no `next build`): reinicie depois de mudá-las.
 
 ## Testes
 
@@ -137,7 +134,8 @@ Os testes usam o banco `patchnotes_test` (recriado pelas migrations a cada execu
 ### Tokens do LLM e cota
 - A contagem vem do Ollama (`prompt_eval_count` e `eval_count`). A mensagem do usuário guarda os tokens de prompt (inclui sistema e contexto) e a do assistente guarda os de resposta (`tokensUsed` do contrato). Se o modelo não informar, usa-se a estimativa **⌈caracteres / 4⌉** e o registro fica marcado `estimated=true`.
 - `/dashboard/metrics.tokensUsed`, `/dashboard/token-usage` e o saldo somam prompt + resposta (tabela `token_usage`).
-- **Cota mensal** (`MONTHLY_TOKEN_QUOTA`, padrão 100.000) por usuário, renovada no 1º dia do mês (UTC). Com saldo zerado o chat responde **429**. A checagem acontece antes de chamar o LLM; pedidos simultâneos no limite podem ultrapassá-lo em uma resposta (não há lock durante a geração, por regra).
+- **Cota mensal** (`MONTHLY_TOKEN_QUOTA`, padrão 100.000) por usuário, renovada no 1º dia do mês (UTC). Com saldo zerado o chat responde **429**.
+- **Recarga simulada:** `POST /api/tokens/recharge` com um dos pacotes (10.000, 50.000 ou 100.000) soma créditos ao mês corrente, sem cobrança. Saldo = cota + recargas do mês − consumo do mês. Teto de recargas por mês em `MONTHLY_TOKEN_CREDIT_CAP` (padrão 500.000; acima disso, 429) e 10 recargas/min por usuário. `GET /api/tokens/history` devolve o extrato (consumo por resposta e recargas). A checagem acontece antes de chamar o LLM; pedidos simultâneos no limite podem ultrapassá-lo em uma resposta (não há lock durante a geração, por regra).
 
 ### Métricas (como cada campo é calculado)
 - `totalEntries`: entradas de devlog. `messagesExchanged`: mensagens concluídas (usuário + assistente).
