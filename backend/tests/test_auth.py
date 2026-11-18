@@ -116,8 +116,11 @@ def test_refresh_rotates_and_detects_reuse(harness: Harness, user: dict) -> None
     assert second and second != first
 
     # Reapresentar o token antigo (roubo simulado) revoga a família inteira, inclusive o token novo.
+    # O pote de cookies é limpo antes: só o token escolhido vai na requisição.
+    harness.client.cookies.clear()
     harness.client.cookies.set("patchnotes_refresh", first, path="/api/auth")
     assert harness.client.post("/api/auth/refresh").status_code == 401
+    harness.client.cookies.clear()
     harness.client.cookies.set("patchnotes_refresh", second, path="/api/auth")
     assert harness.client.post("/api/auth/refresh").status_code == 401
 
