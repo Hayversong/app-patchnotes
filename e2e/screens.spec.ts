@@ -78,9 +78,10 @@ test("foto de perfil enviada como arquivo e servida pela própria API", async ({
 
   await page.locator("#avatar").setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png });
   await expect(page.getByText("Foto atualizada.")).toBeVisible();
+  // A foto aparece no formulário e na prévia do perfil.
   const image = page.locator('main img[src*="/api/profile/avatar"]');
-  await expect(image).toBeVisible();
-  expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1); // carregou de verdade (CSP aceitou)
+  await expect(image.first()).toBeVisible();
+  expect(await image.first().evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1); // carregou de verdade (CSP aceitou)
 
   await page.getByRole("button", { name: "Remover" }).click();
   await expect(page.getByText("Foto removida.")).toBeVisible();

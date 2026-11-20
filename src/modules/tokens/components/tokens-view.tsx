@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, BatteryCharging, Coins } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BatteryCharging, Coins, Gauge } from "lucide-react";
 import { useState } from "react";
 
 import { AnimatedNumber } from "@/components/motion-primitives/animated-number";
@@ -21,8 +21,9 @@ const dateTime = (value: string) => new Date(value).toLocaleString("pt-BR", { da
 function BalanceCard({ balance }: { balance: TokenBalance }) {
   const usedPercent = balance.limit > 0 ? Math.min(100, Math.round((balance.used / balance.limit) * 100)) : 100;
   const low = balance.balance <= balance.limit * 0.1;
-  return <Card variant="stat">
-    <CardContent className="space-y-5">
+  const daysLeft = Math.max(1, Math.ceil((new Date(balance.periodEnd).getTime() - Date.now()) / 86_400_000));
+  return <Card variant="stat" className="flex flex-col">
+    <CardContent className="flex flex-1 flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">Saldo atual</p>
@@ -40,12 +41,29 @@ function BalanceCard({ balance }: { balance: TokenBalance }) {
         <div><dt className="text-zinc-500">Recargas no mês</dt><dd className="mt-1 font-mono text-sm">{number(balance.credits)}</dd></div>
         <div><dt className="text-zinc-500">Renova em</dt><dd className="mt-1 font-mono text-sm">{new Date(balance.periodEnd).toLocaleDateString("pt-BR")}</dd></div>
       </dl>
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-xs">
+        <span className="text-zinc-500">Faltam <span className="font-mono text-foreground">{daysLeft}</span> {daysLeft === 1 ? "dia" : "dias"} para renovar</span>
+        <span className="text-zinc-500">Dá para usar <span className="font-mono text-lime-400">{number(Math.floor(balance.balance / daysLeft))}</span>/dia</span>
+      </div>
       {balance.balance === 0 && <Feedback error>Saldo esgotado: o assistente fica bloqueado até a próxima recarga ou a virada do mês.</Feedback>}
     </CardContent>
   </Card>;
 }
 
-function RechargeCard({ packages }: { packages: number[] }) {
+/** Quanto o saldo rende, pela média real das últimas respostas (ou uma faixa típica quando ainda não há consumo). */
+function BalanceYield({ balance, items }: { balance: number; items: TokenHistoryItem[] }) {
+  const usage = items.filter((item) => item.kind === "usage");
+  const average = usage.length > 0 ? Math.round(usage.reduce((sum, item) => sum + item.amount, 0) / usage.length) : null;
+  return <div className="rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+    <p className="flex items-center gap-2 text-sm font-medium"><Gauge aria-hidden="true" className="size-4 text-lime-400" />Quanto rende seu saldo</p>
+    {average ? <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+      <div><dt className="text-zinc-500">Média por resposta</dt><dd className="mt-1 font-mono text-sm text-foreground">{number(average)} tokens</dd></div>
+      <div><dt className="text-zinc-500">Respostas restantes</dt><dd className="mt-1 font-mono text-sm text-lime-400">≈ {number(Math.floor(balance / Math.max(1, average)))}</dd></div>
+    </dl> : <p className="mt-2 text-xs leading-5 text-muted-foreground">Cada resposta gasta os tokens da sua pergunta, do contexto e do texto gerado, em geral de algumas centenas a poucos milhares. Depois da primeira conversa, aqui aparece a sua média real.</p>}
+  </div>;
+}
+
+function RechargeCard({ packages, balance, items }: { packages: number[]; balance: number; items: TokenHistoryItem[] }) {
   const recharge = useRechargeTokens();
   const [selected, setSelected] = useState<number | null>(null);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
@@ -59,13 +77,14 @@ function RechargeCard({ packages }: { packages: number[] }) {
     });
   };
 
-  return <Card>
+  return <Card className="flex flex-col">
     <CardHeader><CardTitle className="flex items-center gap-2"><BatteryCharging aria-hidden="true" className="size-4 text-lime-400" />Recarga simulada</CardTitle><CardDescription>Sem cobrança: soma tokens ao saldo do mês para testar o fluxo.</CardDescription></CardHeader>
-    <CardContent className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-3">
+    <CardContent className="flex flex-1 flex-col gap-4">
+      <div className="grid grid-cols-3 gap-2">
         {packages.map((amount) => <Button key={amount} variant="outline" onClick={() => onRecharge(amount)} loading={recharge.isPending && selected === amount} loadingText="Recarregando..." disabled={recharge.isPending}>+{number(amount)}</Button>)}
       </div>
       {message && <Feedback error={message.error}>{message.text}</Feedback>}
+      <div className="mt-auto"><BalanceYield balance={balance} items={items} /></div>
     </CardContent>
   </Card>;
 }
@@ -101,7 +120,7 @@ export function TokensView() {
     {heading}
     <section className="grid gap-4 lg:grid-cols-2" aria-label="Saldo e recarga">
       <BalanceCard balance={balance.data} />
-      <RechargeCard packages={history.data?.packages ?? FALLBACK_PACKAGES} />
+      <RechargeCard packages={history.data?.packages ?? FALLBACK_PACKAGES} balance={balance.data.balance} items={history.data?.items ?? []} />
     </section>
     <TokenUsageChart />
     <Card>
