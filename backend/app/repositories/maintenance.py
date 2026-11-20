@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChatMessage, PasswordResetToken, RefreshToken
+from app.models import ChatMessage, PasswordResetToken, PendingRegistration, RefreshToken
 
 
 async def delete_expired_refresh_tokens(session: AsyncSession, cutoff: datetime, batch: int) -> int:
@@ -35,4 +35,11 @@ async def fail_orphan_pending_messages(session: AsyncSession, cutoff: datetime, 
         .scalar_subquery()
     )
     result = await session.execute(update(ChatMessage).where(ChatMessage.id.in_(ids)).values(status="failed"))
+    return result.rowcount or 0
+
+
+async def delete_expired_registrations(session: AsyncSession, cutoff: datetime, batch: int) -> int:
+    """Pedidos de cadastro cujo link venceu antes de `cutoff` sem ser confirmado."""
+    ids = select(PendingRegistration.id).where(PendingRegistration.expires_at < cutoff).limit(batch).scalar_subquery()
+    result = await session.execute(delete(PendingRegistration).where(PendingRegistration.id.in_(ids)))
     return result.rowcount or 0

@@ -10,10 +10,12 @@ export type LoginRequest = {
   password: string;
 };
 
+/** O access token não vem no corpo: a API o grava num cookie HttpOnly. */
 export type AuthResponse = {
   user: User;
-  token: string;
 };
+
+export type VerifyEmailRequest = { token: string };
 
 export type CurrentUserResponse = {
   user: User;

@@ -10,37 +10,48 @@ declare module "axios" {
     skipAuthRefresh?: boolean;
     /** Marca a requisição já refeita após um refresh, para não entrar em laço. */
     retriedAfterRefresh?: boolean;
+    /** Geração da sessão quando a requisição saiu (ver `sessionGeneration`). */
+    sessionGeneration?: number;
   }
 }
 
+/**
+ * A autenticação vai nos cookies HttpOnly que a API grava (o navegador os anexa sozinho em /api, mesmo origin).
+ * Nenhum token passa pelo JavaScript.
+ */
 export const api = axios.create({
   baseURL: "/api",
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
 
+/** Sobe a cada renovação bem-sucedida: um 401 de requisição mais antiga só precisa ser refeito, sem novo refresh. */
+let sessionGeneration = 0;
+let refreshing: Promise<boolean> | null = null;
+
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.sessionGeneration = sessionGeneration;
   return config;
 });
 
-let refreshing: Promise<string | null> | null = null;
-
 /**
- * Renova o access token com o refresh token (cookie httpOnly enviado pelo navegador).
- * Chamadas simultâneas compartilham a mesma renovação. Se falhar, encerra a sessão e retorna null.
+ * Renova a sessão com o refresh token (cookie httpOnly). A API regrava os dois cookies.
+ * Chamadas simultâneas compartilham a mesma renovação. Se falhar, encerra a sessão e devolve false.
  */
-export function refreshAccessToken(): Promise<string | null> {
+export function refreshAccessToken(): Promise<boolean> {
   refreshing ??= api
     .post<AuthResponse>("/auth/refresh", undefined, { skipAuthRefresh: true })
     .then(({ data }) => {
-      useAuthStore.getState().setSession(data.user, data.token);
-      return data.token;
+      sessionGeneration += 1;
+      useAuthStore.getState().setSession(data.user);
+      return true;
     })
     .catch(() => {
-      const { token, clearSession } = useAuthStore.getState();
-      if (token) clearSession({ expired: true });
-      return null;
+      const { authenticated, clearSession } = useAuthStore.getState();
+      if (authenticated) clearSession({ expired: true });
+      // Só a API apaga os cookies HttpOnly vencidos que sobraram no navegador.
+      void api.post("/auth/logout", undefined, { skipAuthRefresh: true }).catch(() => undefined);
+      return false;
     })
     .finally(() => {
       refreshing = null;
@@ -53,19 +64,17 @@ api.interceptors.response.use(
   async (error: unknown) => {
     if (!axios.isAxiosError(error) || error.response?.status !== 401 || !error.config) throw error;
     const config = error.config;
-    const { token, clearSession } = useAuthStore.getState();
+    const { authenticated, clearSession } = useAuthStore.getState();
     // Sem sessão, ou rota de autenticação: o 401 é a resposta final (ex.: credenciais inválidas).
-    if (!token || config.skipAuthRefresh) throw error;
+    if (!authenticated || config.skipAuthRefresh) throw error;
     if (config.retriedAfterRefresh) {
       clearSession({ expired: true });
       throw error;
     }
-    // Outra requisição já renovou o token enquanto esta estava em voo: basta refazer com o atual.
-    const usedToken = String(config.headers.Authorization ?? "").replace(/^Bearer /, "");
-    const freshToken = usedToken && usedToken !== token ? token : await refreshAccessToken();
-    if (!freshToken) throw error;
+    // Outra requisição já renovou a sessão enquanto esta estava em voo: basta refazer.
+    const renewed = (config.sessionGeneration ?? 0) < sessionGeneration || (await refreshAccessToken());
+    if (!renewed) throw error;
     config.retriedAfterRefresh = true;
-    config.headers.Authorization = `Bearer ${freshToken}`;
     return api(config);
   },
 );

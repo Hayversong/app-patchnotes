@@ -1,6 +1,37 @@
 # Registro de mudanças — Patchnotes
 
-Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit (branch `implementando-backend`) ou indica que a mudança foi feita no ambiente, fora do repositório.
+Catálogo das mudanças relevantes, da mais recente para a mais antiga. Cada item aponta o commit ou indica que a mudança foi feita no ambiente, fora do repositório.
+
+## 18/11/2026 — correção dos riscos residuais (branch `develop`)
+
+- `d7e7542` Redis do Docker com senha.
+- `e35459e`, `03e6f70` Access token em cookie HttpOnly (fora do corpo e do JavaScript), proteção CSRF nas escritas por cookie e no login, WebSocket pelo cookie do handshake. Cadastro com confirmação por e-mail (resposta idêntica para qualquer e-mail; migration 0005) e tela `/verify-email`.
+- `58b7738` Foto de perfil por upload (migration 0006), CSP `img-src` só do próprio site; logout espera a API e recarrega a página.
+- `25d1bc6` `docker-compose.prod.yml` com Caddy (HTTPS, HSTS), API em produção e Swagger desligado.
+- Verificação: 160 testes no backend, 31 unitários, 22 cenários E2E em Chromium, Firefox e WebKit (também contra a produção em HTTPS) e 44 ataques bloqueados.
+
+## 18/11/2026 — vistoria de segurança (branch `develop`)
+
+- **Dependências:** Next 15.5.29 e React 19 (Next 14 tinha 3 alertas de execução remota de código); `shadcn` CLI fora da produção; `npm audit` e `pip-audit` sem vulnerabilidades.
+- **API:** `Cache-Control: no-store` e cabeçalhos de segurança em todas as respostas.
+- **Docker:** backend e frontend com `no-new-privileges` e `cap_drop: ALL`; nginx esconde `X-Powered-By`.
+- Detalhes, ataques testados e riscos residuais em `docs/SEGURANCA.md`.
+
+## 18/11/2026 — testes e melhorias (branch `develop`)
+
+- **Testes do frontend:** Vitest com 30 testes (conexão do chat com WebSocket falso, renovação de sessão no Axios, CSP, endereço do WebSocket).
+- **Ponta a ponta:** Playwright com 17 cenários em Chromium, Firefox e WebKit contra o app real; Ollama falso (`e2e/fake-ollama.mjs`) para rodar sem GPU; job `e2e` na CI.
+- **Docker:** nginx como entrada única (`/api`, `/ws`, `/docs` no mesmo endereço), `X-Forwarded-For` sobrescrito e `TRUSTED_PROXIES` só com o IP fixo do proxy; `docker-compose.gpu.yml`.
+- **Correções encontradas pelos testes:** 500 na renderização do `/chat` no servidor; CSP com `upgrade-insecure-requests` em HTTP quebrava o Safari; formulários sem `method="post"` punham a senha na URL sem JavaScript.
+- **Backend:** TestClient com `httpx2` (sem aviso de depreciação).
+
+## 18/11/2026 — integração final (branch `develop`)
+
+- **Tokens:** saldo, extrato e recarga simulada (`/api/tokens/*`, migration 0004) e a tela `/tokens`. O bloqueio do chat por cota considera as recargas.
+- **Chat:** WebSocket como único canal de envio, com aviso de queda, reconexão automática e tokens por mensagem.
+- **MSW removido:** todas as telas consomem a API real; o rewrite `/api/*` aponta para `API_URL` (padrão `http://localhost:8000`).
+- **Ambiente:** `docker-compose.yml` na raiz sobe frontend, API, PostgreSQL, Redis, Ollama e Mailpit; Dockerfiles do frontend e do backend; `.env.example` na raiz.
+- **Swagger** em `/docs` com o protocolo do WebSocket descrito; `GET /api/health`.
 
 ## 12/11/2026
 

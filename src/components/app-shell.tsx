@@ -1,9 +1,9 @@
 "use client";
 
-import { BookOpenText, ChevronLeft, ChevronRight, Cpu, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import { BookOpenText, ChevronLeft, ChevronRight, Coins, Cpu, LayoutDashboard, LogOut, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { SidebarLabel } from "@/components/motion-primitives/sidebar-label";
 import { TransitionPanel } from "@/components/motion-primitives/transition-panel";
@@ -22,16 +22,18 @@ const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Assistente", icon: Cpu },
   { href: "/devlog", label: "Devlog", icon: BookOpenText },
+  { href: "/tokens", label: "Tokens", icon: Coins },
   { href: "/profile", label: "Perfil", icon: UserRound },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const token = useAuthStore((state) => state.token);
+  const authenticated = useAuthStore((state) => state.authenticated);
   const storedUser = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const endSession = useLogout();
+  const [leaving, setLeaving] = useState(false);
   const currentUser = useCurrentUserQuery();
   const user = storedUser ?? currentUser.data;
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
@@ -44,12 +46,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [currentUser.data, setUser]);
 
   useEffect(() => {
-    if (!token) router.replace("/login");
-  }, [router, token]);
+    // Sessão encerrada pela API (401). No logout, quem navega é o próprio useLogout.
+    if (!authenticated && !leaving) router.replace("/login");
+  }, [router, authenticated, leaving]);
 
   function logout() {
-    endSession();
-    router.replace("/login");
+    setLeaving(true);
+    void endSession();
   }
 
   return (

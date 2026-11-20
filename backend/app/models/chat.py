@@ -44,3 +44,18 @@ class TokenUsage(Base):
     # True quando a contagem foi estimada (o modelo não informou números).
     estimated: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TokenCredit(Base):
+    """Créditos de tokens somados à cota do mês (recarga simulada; não há cobrança real)."""
+
+    __tablename__ = "token_credits"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        Index("ix_token_credits_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    amount: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

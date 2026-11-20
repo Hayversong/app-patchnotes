@@ -26,6 +26,7 @@ class CleanupReport:
     refresh_tokens: int = 0
     reset_tokens: int = 0
     orphan_messages: int = 0
+    pending_registrations: int = 0
     skipped: bool = False  # outra execução segurava o lock
 
 
@@ -59,6 +60,7 @@ async def run_cleanup(
             report.refresh_tokens = await _drain(sessionmaker, lambda s: maintenance.delete_expired_refresh_tokens(s, cutoff, batch), batch, pause)
             report.reset_tokens = await _drain(sessionmaker, lambda s: maintenance.delete_stale_reset_tokens(s, cutoff, batch), batch, pause)
             report.orphan_messages = await _drain(sessionmaker, lambda s: maintenance.fail_orphan_pending_messages(s, pending_cutoff, batch), batch, pause)
+            report.pending_registrations = await _drain(sessionmaker, lambda s: maintenance.delete_expired_registrations(s, cutoff, batch), batch, pause)
         finally:
             await lock_connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": CLEANUP_LOCK_KEY})
             await lock_connection.commit()

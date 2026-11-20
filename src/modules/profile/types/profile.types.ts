@@ -9,9 +9,9 @@ export type Profile = {
 
 export type ProfileResponse = { user: Profile };
 
+/** avatarUrl é só de leitura: a foto é enviada em PUT /profile/avatar. */
 export type UpdateProfileRequest = {
   name?: string;
   bio?: string;
-  avatarUrl?: string;
   githubUrl?: string;
 };

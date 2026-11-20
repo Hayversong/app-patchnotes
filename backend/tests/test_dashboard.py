@@ -42,7 +42,7 @@ def test_dashboard_reflects_activity(harness: Harness, user: dict) -> None:
 
 def test_token_balance(harness: Harness, user: dict) -> None:
     before = get(harness, user["token"], "token-balance")
-    assert set(before) == {"balance", "limit", "used", "periodStart", "periodEnd"}
+    assert set(before) == {"balance", "limit", "used", "credits", "periodStart", "periodEnd"}
     assert before["limit"] == before["balance"] == 100_000 and before["used"] == 0
     start, end = current_period()
     assert before["periodStart"] == start.isoformat(timespec="milliseconds").replace("+00:00", "Z")

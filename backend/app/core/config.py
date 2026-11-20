@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=15, ge=1)
     refresh_token_ttl_days: int = Field(default=7, ge=1)
     refresh_cookie_name: str = "patchnotes_refresh"
+    # Access token em cookie HttpOnly (JavaScript não lê). O header Authorization continua aceito (Swagger, scripts).
+    access_cookie_name: str = "patchnotes_access"
     cookie_secure: bool = False
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     # Proxies reversos confiáveis (IPs ou redes CIDR, separados por vírgula). Só conexões vindas deles têm o
@@ -38,8 +40,12 @@ class Settings(BaseSettings):
     # Estado compartilhado entre réplicas (limites de requisição e de conexões WebSocket). Obrigatório em production.
     redis_url: str | None = None
     max_request_body_bytes: int = Field(default=64 * 1024, ge=1024)
+    # Foto de perfil (PNG, JPEG ou WebP). Só a rota do upload aceita corpo maior que max_request_body_bytes.
+    avatar_max_bytes: int = Field(default=256 * 1024, ge=1024, le=5 * 1024 * 1024)
 
     password_reset_ttl_minutes: int = Field(default=30, ge=5, le=24 * 60)
+    # Validade do link de confirmação de cadastro.
+    email_verification_ttl_minutes: int = Field(default=24 * 60, ge=10, le=7 * 24 * 60)
     frontend_url: str = "http://localhost:3000"
     smtp_host: str = "127.0.0.1"
     smtp_port: int = 1025
@@ -64,6 +70,10 @@ class Settings(BaseSettings):
     chat_context_messages: int = Field(default=6, ge=0, le=50)
     chat_history_max: int = Field(default=200, ge=1, le=1000)
     monthly_token_quota: int = Field(default=100_000, ge=0)
+    # Teto de tokens que a recarga simulada pode somar no mês (protege contra cota infinita).
+    monthly_token_credit_cap: int = Field(default=500_000, ge=0)
+    # Swagger (/docs). None = ligado fora de produção e desligado em produção.
+    api_docs: bool | None = None
 
     ws_auth_timeout_seconds: float = Field(default=5, gt=0)
     ws_max_frame_bytes: int = Field(default=16 * 1024, ge=1024)
@@ -120,6 +130,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        return self.api_docs if self.api_docs is not None else not self.is_production
 
 
 @lru_cache

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utcnow
@@ -58,3 +58,36 @@ class PasswordResetToken(Base):
         Index("ix_password_reset_tokens_expires_at", "expires_at"),
         Index("ix_password_reset_tokens_used_at", "used_at", postgresql_where=text("used_at IS NOT NULL")),
     )
+
+
+class PendingRegistration(Base):
+    """Cadastro aguardando a confirmação do e-mail. A conta (users) só nasce quando o link é aberto.
+
+    O hash da senha fica aqui, e não numa conta inativa: um terceiro que cadastre o e-mail de outra pessoa
+    nunca cria uma conta com a senha dele; no máximo dispara um e-mail que a dona do endereço ignora.
+    Um novo pedido para o mesmo e-mail substitui o anterior (e invalida o link antigo).
+    """
+
+    __tablename__ = "pending_registrations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (Index("ix_pending_registrations_expires_at", "expires_at"),)
+
+
+class UserAvatar(Base):
+    """Foto de perfil enviada pela pessoa. Fica numa tabela à parte para o binário não vir junto em cada
+    consulta de usuário. users.avatar_url aponta para /api/profile/avatar?v=<versão>."""
+
+    __tablename__ = "user_avatars"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(32))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

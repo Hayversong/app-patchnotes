@@ -33,7 +33,7 @@ TEST_DATABASE_URL = _ENV.test_database_url
 TEST_REDIS_URL = _ENV.test_redis_url
 assert "test" in TEST_DATABASE_URL.rsplit("/", 1)[-1], "TEST_DATABASE_URL precisa apontar para um banco de testes"
 
-TABLES = ["token_usage", "chat_messages", "devlog_entries", "password_reset_tokens", "refresh_tokens", "users"]
+TABLES = ["token_usage", "chat_messages", "devlog_entries", "password_reset_tokens", "refresh_tokens", "pending_registrations", "users"]
 ORIGIN = "http://localhost:3000"
 
 
@@ -136,9 +136,30 @@ class Harness:
 
     # --- atalhos de API ---
     def register(self, email: str = "pessoa@patchnotes.dev", password: str = "senha-segura-1", name: str = "Pessoa Teste") -> dict[str, Any]:
+        """Cadastro completo: pedido (202) → link do e-mail → confirmação. Devolve {"user", "token"}.
+
+        O access token é lido do cookie e o cookie sai do cliente: os testes autenticam pelo header, e uma
+        requisição sem header continua sendo uma requisição sem credencial (o refresh cookie fica)."""
         response = self.client.post("/api/auth/register", json={"name": name, "email": email, "password": password})
-        assert response.status_code == 201, response.text
-        return response.json()
+        assert response.status_code == 202, response.text
+        token = self.verification_token(email)
+        # O e-mail de confirmação já cumpriu o papel: sai da caixa para não confundir testes que contam e-mails.
+        self.mailer.sent = [mail for mail in self.mailer.sent if token not in mail["body"]]
+        verified = self.client.post("/api/auth/verify-email", json={"token": token})
+        assert verified.status_code == 200, verified.text
+        return {"user": verified.json()["user"], "token": self.take_access_cookie()}
+
+    def verification_token(self, email: str) -> str:
+        mail = next(item for item in reversed(self.mailer.sent) if item["to"] == email.lower() and "verify-email#token=" in item["body"])
+        return mail["body"].split("verify-email#token=", 1)[1].split()[0]
+
+    def take_access_cookie(self) -> str:
+        """Remove o access cookie do cliente e devolve o valor (para usar no header Authorization)."""
+        name = self.settings.access_cookie_name
+        value = self.client.cookies.get(name)
+        assert value, "a resposta não gravou o access cookie"
+        self.client.cookies.delete(name)
+        return value
 
     def auth(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}

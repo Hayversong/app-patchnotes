@@ -20,14 +20,14 @@ export const metadata: Metadata = {
   description: "Documente progresso, explore mecânicas e acompanhe as metas do seu jogo.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   // Ler os cabeçalhos torna a renderização dinâmica: cada resposta recebe o nonce novo da CSP (middleware.ts).
   // Páginas pré-renderizadas no build teriam scripts sem nonce, bloqueados pela política.
-  headers();
+  await headers();
   return (
     <html lang="pt-BR" className="dark">
       <body

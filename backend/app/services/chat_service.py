@@ -64,8 +64,8 @@ class ChatService:
 
     async def _prepare(self, user_id: uuid.UUID, message: str, context: str | None) -> _Prepared:
         async with self._sessionmaker() as session, session.begin():
-            start, end = quota_service.current_period()
-            if await chat_repo.tokens_used_between(session, user_id, start, end) >= self._settings.monthly_token_quota:
+            balance = await quota_service.get_balance(session, user_id, self._settings.monthly_token_quota)
+            if balance.balance <= 0:
                 raise QuotaExceededError
             recent = await chat_repo.recent_complete(session, user_id, self._settings.chat_context_messages)
             request = await chat_repo.add_message(session, user_id=user_id, role="user", content=message, status="pending")

@@ -7,6 +7,7 @@ import type {
   MessageResponse,
   RegisterRequest,
   ResetPasswordRequest,
+  VerifyEmailRequest,
 } from "@/modules/auth/types/auth.types";
 
 // Rotas de autenticação não disparam refresh automático num 401 (ver src/lib/axios.ts).
@@ -17,8 +18,15 @@ export async function login(payload: LoginRequest): Promise<AuthResponse> {
   return data;
 }
 
-export async function register(payload: RegisterRequest): Promise<AuthResponse> {
-  const { data } = await api.post<AuthResponse>("/auth/register", payload, authRoute);
+/** Pede o cadastro: a API responde sempre 202 e manda o link de confirmação por e-mail. */
+export async function register(payload: RegisterRequest): Promise<MessageResponse> {
+  const { data } = await api.post<MessageResponse>("/auth/register", payload, authRoute);
+  return data;
+}
+
+/** Confirma o cadastro com o token do link; a conta é criada e a sessão aberta (cookies HttpOnly). */
+export async function verifyEmail(payload: VerifyEmailRequest): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>("/auth/verify-email", payload, authRoute);
   return data;
 }
 

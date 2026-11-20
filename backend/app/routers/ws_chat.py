@@ -1,7 +1,8 @@
 """WebSocket /ws/chat — resposta do LLM token a token.
 
 Protocolo (JSON em frames de texto; detalhes em docs/API_CONTRACTS.md):
-  cliente → {"type": "auth", "token": "<access token>"}              (1ª mensagem, em até WS_AUTH_TIMEOUT_SECONDS)
+  cliente → {"type": "auth"} ou {"type": "auth", "token": "<access token>"}   (1ª mensagem, em até WS_AUTH_TIMEOUT_SECONDS;
+            sem "token", vale o cookie HttpOnly patchnotes_access enviado no handshake)
   servidor → {"type": "ready"}
   cliente → {"type": "message", "message": "...", "context": "..."?}
   servidor → {"type": "start"} · {"type": "token", "content": "..."}* · {"type": "done", "done": true, "tokens": n, "message": {...}}
@@ -171,7 +172,9 @@ async def _serve(websocket: WebSocket, settings: Settings, slots: ConnectionSlot
         await websocket.close(CLOSE_UNAUTHORIZED, "Autenticação não recebida a tempo.")
         return
     auth = _parse(first)
-    token = auth.get("token") if auth and auth.get("type") == "auth" else None
+    # Navegador: {"type": "auth"} e o token vem do cookie HttpOnly do handshake (o Origin já foi conferido).
+    # Outros clientes: {"type": "auth", "token": "..."}.
+    token = (auth.get("token") or websocket.cookies.get(settings.access_cookie_name)) if auth and auth.get("type") == "auth" else None
     authenticated = await _authenticate(websocket, settings, token) if isinstance(token, str) and token else None
     if authenticated is None:
         await websocket.close(CLOSE_UNAUTHORIZED, "Sessão inválida ou expirada.")

@@ -11,13 +11,35 @@ from redis.asyncio import Redis
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.middleware import BodySizeLimitMiddleware
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.connection_limits import MemoryConnectionSlots, RedisConnectionSlots
 from app.core.rate_limit import MemoryRateLimiter, RateLimiter, RedisRateLimiter
 from app.db.session import create_engine, create_sessionmaker
-from app.routers import auth, chat, dashboard, devlog, profile, ws_chat
+from app.routers import auth, chat, dashboard, devlog, profile, tokens, ws_chat
 from app.services.chat_service import ChatService
 from app.services.email_service import Mailer, SmtpMailer
 from app.services.llm_service import LLMService, OllamaService
+
+
+API_DESCRIPTION = """
+API do Patchnotes: autenticação JWT, devlog, chat com LLM local (Ollama), métricas do dashboard e sistema de tokens.
+
+**Autenticação:** `POST /api/auth/login` grava os cookies HttpOnly `patchnotes_access` (JWT) e `patchnotes_refresh`;
+o token não vem no corpo. Pelo Swagger, depois do login os cookies já valem; scripts podem mandar
+`Authorization: Bearer <valor do cookie>`. Escritas autenticadas pelo cookie precisam vir do próprio site (CSRF).
+O cadastro (`/api/auth/register`) envia um link de confirmação; a conta nasce em `/api/auth/verify-email`.
+
+**Chat em tempo real — `ws://<host>/ws/chat`** (WebSocket não aparece na lista abaixo):
+
+1. cliente → `{"type": "auth"}` (cookie do handshake) ou `{"type": "auth", "token": "..."}` · servidor → `{"type": "ready"}`
+2. cliente → `{"type": "message", "message": "...", "context": "..."}`
+3. servidor → `{"type": "start"}`, vários `{"type": "token", "content": "..."}` e por fim
+   `{"type": "done", "done": true, "tokens": n, "message": {...}}`
+4. erros recuperáveis: `{"type": "error", "code": "...", "message": "..."}`
+
+Códigos de fechamento: 4401 (token inválido/expirado), 4408 (inatividade), 4429 (conexões demais).
+O histórico é carregado via REST em `GET /api/chat/history`.
+"""
 
 
 def create_app(
@@ -52,25 +74,34 @@ def create_app(
         title="Patchnotes API",
         version="2.0.0",
         lifespan=lifespan,
-        # Documentação interativa só fora de produção.
-        docs_url=None if settings.is_production else "/api/docs",
+        description=API_DESCRIPTION,
+        # Swagger em /docs. Em produção fica desligado, a menos que API_DOCS=true.
+        docs_url="/docs" if settings.api_docs_enabled else None,
         redoc_url=None,
-        openapi_url=None if settings.is_production else "/api/openapi.json",
+        openapi_url="/openapi.json" if settings.api_docs_enabled else None,
     )
     app.state.settings = settings
 
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes,
+                       overrides={"/api/profile/avatar": settings.avatar_max_bytes})
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
+    # Por último = camada mais externa: os cabeçalhos valem também para 413, preflight de CORS e erros.
+    app.add_middleware(SecurityHeadersMiddleware)
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api")
-    for module in (auth, profile, devlog, chat, dashboard):
+
+    @api.get("/health", tags=["health"], summary="Verificação de saúde (usada pelo Docker)")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    for module in (auth, profile, devlog, chat, dashboard, tokens):
         api.include_router(module.router)
     app.include_router(api)
     app.include_router(ws_chat.router)
